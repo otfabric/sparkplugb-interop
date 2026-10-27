@@ -39,10 +39,23 @@ brokers:
     image: "emqx/nanomq:0.25.7@sha256:ed5a9bb892f58e59aa4e47a9932fb7e056f5ae57ba201414c793b8c961587784"
     license: "MIT"
 
+# Base images of the adapter Dockerfiles, pinned by multi-arch index digest
+# (scripts/check-versions.sh: every ARG *_DIGEST of a Dockerfile is here).
+base_images:
+  maven: "maven:3.9.16-eclipse-temurin-21-noble@sha256:99e61abcff91a9b1333463bd8451fb18495d6eba9250ac66a338b518f8278320"   # tahu (build)
+  eclipse-temurin: "eclipse-temurin:21.0.12.1_1-jre-noble@sha256:dd4cbbf22ea3efd0b0bf3c72618a1999e6ba7394afdebf2d0780b2fdee8c6694"   # tahu
+  python: "python:3.13-slim-trixie@sha256:57b29a7c050c4e679e4bea572e14b3965cf4b5839de2da49d55e49ffc4024f39"   # pysparkplug
+  dotnet-sdk: "mcr.microsoft.com/dotnet/sdk:10.0@sha256:de4fe90a98845d75910b9769662465c84de1a934665c431279d1382b2bddc02b"   # sparkplugnet (build)
+  dotnet-runtime: "mcr.microsoft.com/dotnet/runtime:10.0@sha256:a3f9f81954b9c810af2ed18849716c8dc74a4707bd0907fdbd69be81554c0f30"   # sparkplugnet
+  rust: "rust:1.95-slim-trixie@sha256:e14e87345b4d5964ddcc3491d27ee046a0f23820f340c3c1e24da6880141f7c0"   # srad (build)
+  node: "node:22-trixie-slim@sha256:8eb619e402eaede1748a3c8173bffab391592812e85136452f781741c7242ddf"   # tahu-js
+  golang: "golang:1.25.14-trixie@sha256:2c4c60ef415fbfa5e90300722293bef36c5e63fae17570ce18f580af933dbd73"   # sparkplughost (build)
+  debian: "debian:trixie-slim@sha256:62bd423aeee912639ca8ee681c2b762cb3e25137e0a92b20be455898a9f034ad"   # srad, sparkplughost
+
 implementations:
   tahu:
     priority: P0
-    status: planned
+    status: published
     upstream: "Eclipse Tahu (Java)"
     repository: "https://github.com/eclipse-tahu/tahu"
     artifact: "org.eclipse.tahu:tahu-edge, org.eclipse.tahu:tahu-host"
@@ -54,7 +67,7 @@ implementations:
 
   pysparkplug:
     priority: P1
-    status: planned
+    status: published
     upstream: "pysparkplug"
     repository: "https://github.com/matteosox/pysparkplug"
     artifact: "pysparkplug (PyPI)"
@@ -66,7 +79,7 @@ implementations:
 
   sparkplugnet:
     priority: P1
-    status: planned
+    status: published
     upstream: "SparkplugNet"
     repository: "https://github.com/SeppPenner/SparkplugNet"
     artifact: "SparkplugNet (NuGet)"
@@ -75,10 +88,11 @@ implementations:
     language: "C#"
     independent_engine: true
     roles: [edge, host]
+    dependencies: "MQTTnet 5.2.0.1603, protobuf-net 3.3.21 (locked with content hashes in adapters/sparkplugnet/adapter/packages.lock.json)"
 
   srad:
     priority: P1
-    status: planned
+    status: published
     upstream: "srad"
     repository: "https://github.com/dpazj/srad"
     artifact: "srad (crates.io)"
@@ -90,7 +104,7 @@ implementations:
 
   tahu-js:
     priority: P1
-    status: planned
+    status: published
     upstream: "Eclipse Tahu sparkplug-client (JavaScript)"
     repository: "https://github.com/eclipse-tahu/tahu"
     artifact: "sparkplug-client (npm)"
@@ -102,7 +116,7 @@ implementations:
 
   sparkplughost:
     priority: P2
-    status: planned
+    status: published
     upstream: "Evergen sparkplughost"
     repository: "https://github.com/EvergenEnergy/sparkplughost"
     artifact: "github.com/EvergenEnergy/sparkplughost (Go module)"

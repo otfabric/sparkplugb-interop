@@ -1,0 +1,136 @@
+name: CI
+run-name: "CI (${{ github.event_name }}) on ${{ github.ref_name }} by @${{ github.actor }}"
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+  schedule:
+    # Nightly: catches drift in what the pinned builds fetch.
+    - cron: "41 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # Nothing is pulled from Docker Hub: anonymous pulls are rate limited per
+  # runner address and its token service times out under load. Base images
+  # and brokers (pinned by digest) and build tooling come from Google's mirror
+  # of it, and every registry operation is retried on transient failures
+  # (scripts/retry.sh).
+  BASE_REGISTRY: mirror.gcr.io/library
+  BROKER_REGISTRY: mirror.gcr.io
+  TOOLS_REGISTRY: mirror.gcr.io
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Fixtures, versions, scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install jsonschema
+      - name: versions.yaml matches the build files
+        run: scripts/check-versions.sh
+      - name: RELEASE.md has the notes of interop_version
+        run: scripts/release-notes.sh > /dev/null
+      - name: Fixtures
+        run: python3 scripts/validate-fixtures.py --require-schema
+      - name: Schemas are valid JSON Schema
+        run: |
+          python3 - <<'PY'
+          import json, pathlib, jsonschema
+          for p in sorted(pathlib.Path("schemas").glob("*.json")):
+              jsonschema.Draft202012Validator.check_schema(json.loads(p.read_text()))
+              print("ok  ", p)
+          PY
+      - name: Shellcheck
+        run: make lint
+      - name: No reference to a library under test
+        # REQUIREMENTS.md R1: adapters, fixtures, scripts and schemas must not
+        # know any consumer. Documentation may name consumers as examples.
+        run: |
+          if grep -rInE 'go-sparkplugb|sparkplugbctl|otfabric/go-' adapters fixtures schemas scripts tests Makefile; then
+            echo "::error::consumer-specific reference found"; exit 1
+          fi
+
+  # Built and self-tested natively on both architectures: no emulation. Every
+  # host against every edge, every fixture, on mosquitto.
+  selftest:
+    name: Build, smoke, cross-stack (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    needs: validate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install jsonschema
+
+      - name: Build images
+        run: make images
+
+      - name: Capabilities
+        run: make capabilities | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Images are linux/${{ matrix.arch }}
+        run: |
+          for image in $(docker images --format '{{.Repository}}:{{.Tag}}' | grep 'sparkplugb-interop-.*:dev$'); do
+            got=$(docker image inspect --format '{{.Architecture}}' "${image}")
+            [[ "${got}" == "${{ matrix.arch }}" ]] || { echo "::error::${image} is ${got}"; exit 1; }
+          done
+
+      - name: Smoke, cross-stack self-test, document schemas
+        run: make documents
+
+      - name: Collect container logs on failure
+        if: failure()
+        run: |
+          mkdir -p reports/logs
+          for c in $(docker ps -aq --filter "label=sparkplugb-interop.run"); do
+            docker logs "$c" > "reports/logs/${c}.log" 2>&1 || true
+          done
+
+      - name: Upload documents
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: selftest-documents-${{ matrix.arch }}
+          path: reports/
+          if-no-files-found: ignore
+
+  # The same cross-stack self-test on the other pinned brokers.
+  brokers:
+    name: Cross-stack on ${{ matrix.broker }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    needs: validate
+    strategy:
+      fail-fast: false
+      matrix:
+        broker: [hivemq-ce, emqx, nanomq]
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build images
+        run: make images
+      - name: Cross-stack self-test
+        run: make interop BROKER=${{ matrix.broker }}
+        env:
+          BROKER: ${{ matrix.broker }}

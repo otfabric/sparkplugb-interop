@@ -1,86 +1,202 @@
+# Self-documented Makefile (https://marmelab.com/blog/2016/02/29/auto-documented-makefile.html)
+# Run 'make' or 'make help' to list targets.
+#
+# Pre-push gate:  make ci
+# Quick check:    make images smoke
+
 .DEFAULT_GOAL := help
 
-.PHONY: help fmt fmt-check lint lint-ci vet vuln test coverage cover coverage-gate e2e e2e-down check clean
+REGISTRY  ?= ghcr.io/otfabric
+VERSION   ?= dev
+PLATFORMS ?= linux/amd64,linux/arm64
 
-help: ## This help
-	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z0-9_-]+:.*?## / {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+# Registry of the base images (python, maven, eclipse-temurin, dotnet, rust,
+# node, golang, debian). They are pinned by digest in the Dockerfiles, so any
+# mirror of Docker Hub's official images gives the same build. The workflows set
+#   BASE_REGISTRY=mirror.gcr.io/library
+# because anonymous pulls from Docker Hub are rate limited per runner address.
+BASE_REGISTRY ?= docker.io/library
 
-export GOWORK := off
+# Registry of the brokers (pinned by digest in versions.yaml) and of the
+# images the build tooling runs: BuildKit, the QEMU handlers, shellcheck,
+# Python. The workflows set both to mirror.gcr.io.
+BROKER_REGISTRY ?= docker.io
+TOOLS_REGISTRY  ?= docker.io
 
-GO_MOD_VERSION := $(shell sed -nE 's/^go ([0-9]+\.[0-9]+).*/\1/p' go.mod | head -n1)
-GOFMT_CI = $(shell GOTOOLCHAIN=go$(GO_MOD_VERSION).0 go env GOROOT)/bin/gofmt
+# Everything that pulls from or pushes to a registry goes through this: it
+# repeats a command that failed on a rate limit, a 5xx or a timeout, and only
+# then. See scripts/retry.sh.
+RETRY := scripts/retry.sh
 
-# Library packages: exclude e2e tests (./tests/...) which need Docker.
-TEST_PKGS := $(shell go list ./... | grep -v '/tests$$')
-COVER_PKGS := $(shell go list ./... | grep -vE '/tests$$|/cmd/' | paste -sd, -)
-COVER_MIN ?= 80
+# Name of the docker-container builder "make buildx-setup" creates.
+BUILDER ?= sparkplugb-interop
 
-GO_FILES = $(shell git ls-files --cached --others --exclude-standard -- '*.go')
+# Adapters with a published image, in priority order. The self-tests run over
+# all of them; override to work on one: make smoke ADAPTERS=pysparkplug
+ADAPTERS ?= tahu pysparkplug sparkplugnet srad tahu-js sparkplughost
 
-fmt: ## Format Go code with the gofmt of the Go version in go.mod
-	@echo "Running gofmt (go$(GO_MOD_VERSION))"
-	@$(GOFMT_CI) -w $(GO_FILES)
+# Brokers "interop-brokers" runs the cross-stack self-test on (versions.yaml).
+BROKERS ?= mosquitto hivemq-ce emqx nanomq
 
-fmt-check: ## Fail if gofmt would change any file
-	@echo "Checking formatting (gofmt go$(GO_MOD_VERSION) and local $$(go env GOVERSION))"
-	@ci="$$($(GOFMT_CI) -l $(GO_FILES))"; loc="$$(gofmt -l $(GO_FILES))"; \
-	if [ -n "$$ci$$loc" ]; then \
-		[ -z "$$ci" ] || { echo "Not formatted for gofmt go$(GO_MOD_VERSION) (CI):"; echo "$$ci"; }; \
-		[ -z "$$loc" ] || { echo "Not formatted for the local gofmt:"; echo "$$loc"; }; \
-		echo "Run 'make fmt'."; \
-		exit 1; \
-	fi
+image = $(REGISTRY)/sparkplugb-interop-$(1)
 
-lint: ## Run staticcheck
-	@echo "Running staticcheck"
-	@staticcheck ./...
+export REGISTRY VERSION BROKER_REGISTRY
 
-lint-ci: ## Run golangci-lint (see .golangci.yaml)
-	@echo "Running golangci-lint"
-	@golangci-lint run ./...
+# image-% and smoke-% are pattern rules, which make ignores for .PHONY
+# targets: they depend on FORCE instead.
+.PHONY: help all ci validate documents lint images smoke interop interop-brokers buildx publish \
+        buildx-setup publish-arch publish-manifest digests capabilities lock-pysparkplug clean FORCE
+FORCE:
 
-vet: ## Run go vet
-	@echo "Running go vet"
-	@go vet ./...
+help: ## Show this help
+	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z0-9_%-]+:.*?## / {printf "\033[36m%-22s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-vuln: ## Run govulncheck
-	@echo "Running govulncheck"
-	@govulncheck ./...
+all: validate images ## Validate fixtures and build the local images
 
-test: ## Run the harness tests with the race detector
-	@echo "Running tests"
-	@go test -count=1 -race $(TEST_PKGS)
+ci: validate lint images documents ## Full local CI: validate, lint, build, smoke and cross-stack self-test, document schemas
+	@echo ""
+	@echo "All local CI checks passed."
 
-coverage: ## Run tests with coverage (writes coverage.out)
-	@echo "Running coverage"
-	@go test -count=1 -race -coverprofile=coverage.out -covermode=atomic -coverpkg=$(COVER_PKGS) $(TEST_PKGS)
-	@go tool cover -func=coverage.out | tail -n1
+# ── Validation ───────────────────────────────────────────────────────────────
 
-coverage-gate: coverage ## Fail if coverage is below COVER_MIN percent
-	@total=$$(go tool cover -func=coverage.out | awk '/^total:/ {sub("%", "", $$3); print $$3}'); \
-	if awk -v t="$$total" -v m="$(COVER_MIN)" 'BEGIN { exit !(t + 0 >= m + 0) }'; then \
-		echo "Coverage $$total% meets the gate of $(COVER_MIN)%"; \
+validate: ## Validate every fixture against the schema and the cross-field rules; check versions.yaml and RELEASE.md
+	@scripts/check-versions.sh
+	@scripts/release-notes.sh > /dev/null && echo "ok   RELEASE.md has the notes of interop_version"
+	@echo "Validating fixtures..."
+	@if python3 -c 'import jsonschema' 2>/dev/null; then \
+		python3 scripts/validate-fixtures.py --require-schema; \
 	else \
-		echo "Coverage $$total% is below the gate of $(COVER_MIN)%"; exit 1; \
+		echo "(jsonschema not installed locally: running the validator in a container)"; \
+		$(RETRY) docker run --rm -v "$(CURDIR):/work:ro" -w /work $(TOOLS_REGISTRY)/library/python:3.12-slim \
+			sh -c 'pip install -q --root-user-action=ignore jsonschema && python scripts/validate-fixtures.py --require-schema'; \
 	fi
 
-cover: coverage ## Open coverage report in browser
-	@echo "Opening coverage report"
-	@go tool cover -html=coverage.out
+documents: ## Run the self-tests keeping every document, and validate them against schemas/
+	@rm -rf reports && mkdir -p reports
+	@REPORT_DIR=reports $(MAKE) --no-print-directory smoke interop
+	@echo "Validating documents..."
+	@if python3 -c 'import jsonschema' 2>/dev/null; then \
+		python3 scripts/validate-documents.py reports; \
+	else \
+		$(RETRY) docker run --rm -v "$(CURDIR):/work:ro" -w /work $(TOOLS_REGISTRY)/library/python:3.12-slim \
+			sh -c 'pip install -q --root-user-action=ignore jsonschema && python scripts/validate-documents.py reports'; \
+	fi
 
-e2e: ## Run E2E tests against the broker matrix (needs Docker)
-	@echo "Starting broker matrix"
-	@docker compose pull
-	@docker compose up -d --wait --wait-timeout 180
-	@echo "Running E2E tests"
-	@go test -tags e2e ./tests/... -v -timeout=120s; rc=$$?; \
-	docker compose down -v; exit $$rc
+lint: ## Shellcheck the scripts (the installed shellcheck, or a container when there is none)
+	@echo "Linting scripts..."
+	@if command -v shellcheck >/dev/null 2>&1; then \
+		shellcheck --severity=warning -x -P scripts scripts/*.sh; \
+	else \
+		$(RETRY) docker run --rm -v "$(CURDIR):/mnt:ro" $(TOOLS_REGISTRY)/koalaman/shellcheck:stable --severity=warning -x -P scripts scripts/*.sh; \
+	fi
 
-e2e-down: ## Tear down the broker matrix
-	@docker compose down -v
+# ── Local single-arch images (loaded into Docker; used by smoke and interop) ──
 
-check: fmt fmt-check lint lint-ci vet vuln test coverage-gate ## Run format + lint + vet + vuln + test + coverage gate
+images: $(addprefix image-,$(ADAPTERS)) ## Build every adapter image for the host architecture
 
-clean: ## Remove coverage artifacts
-	@echo "Cleaning up"
-	@rm -rf coverage.out coverage.html
+image-%: FORCE ## Build one adapter image, e.g. image-tahu
+	@echo "Building $* image ($(VERSION))..."
+	@$(RETRY) docker build \
+		--build-arg BASE_REGISTRY=$(BASE_REGISTRY) --build-arg ADAPTER_VERSION=$(VERSION) \
+		--tag $(call image,$*):$(VERSION) \
+		--file adapters/$*/Dockerfile \
+		.
+
+# ── Self-tests (images must be built) ─────────────────────────────────────────
+
+smoke: $(addprefix smoke-,$(ADAPTERS)) ## Container-contract smoke test of every adapter
+
+smoke-%: FORCE ## Smoke test one adapter, e.g. smoke-srad
+	@scripts/smoke.sh $*
+
+interop: ## Cross-stack self-test on BROKER (default mosquitto): every host against every edge, every fixture
+	@scripts/interop.sh $(ADAPTERS)
+
+interop-brokers: ## Cross-stack self-test on every broker of BROKERS
+	@for b in $(BROKERS); do echo "== broker $$b"; BROKER=$$b scripts/interop.sh $(ADAPTERS) || exit 1; done
+
+capabilities: ## Print the capability document of every adapter
+	@for a in $(ADAPTERS); do docker run --rm $(call image,$$a):$(VERSION) print-capabilities; done
+
+# ── Locks ─────────────────────────────────────────────────────────────────────
+
+lock-pysparkplug: ## Regenerate adapters/pysparkplug/requirements.txt (hashed) in a container
+	@$(RETRY) docker run --rm -v "$(CURDIR)/adapters/pysparkplug:/work" -w /work $(TOOLS_REGISTRY)/library/python:3.13-slim \
+		sh -c 'pip install -q --root-user-action=ignore pip==25.2 pip-tools==7.5.1 && \
+		       pip-compile -q --generate-hashes --allow-unsafe --strip-extras -o requirements.txt requirements.in'
+
+# ── Multi-arch build and publish ──────────────────────────────────────────────
+
+buildx-setup: ## Prepare multi-arch builds: QEMU handlers and a docker-container builder (pulled through TOOLS_REGISTRY)
+	@echo "Installing QEMU handlers and creating builder $(BUILDER)..."
+	@$(RETRY) docker run --privileged --rm $(TOOLS_REGISTRY)/tonistiigi/binfmt:latest --install arm64,amd64 >/dev/null
+	@docker buildx rm $(BUILDER) >/dev/null 2>&1 || true
+	@$(RETRY) docker buildx create --name $(BUILDER) --driver docker-container \
+		--driver-opt image=$(TOOLS_REGISTRY)/moby/buildkit:buildx-stable-1 --bootstrap >/dev/null
+	@docker buildx inspect $(BUILDER) | grep -E '^(Name|Driver|Platforms)' || true
+
+# Uses the builder of buildx-setup when there is one, the current builder otherwise.
+builder_flag = $(shell docker buildx inspect $(BUILDER) >/dev/null 2>&1 && echo --builder $(BUILDER))
+
+buildx: ## Build every image for $(PLATFORMS) under emulation, without pushing (local check; CI builds natively on both)
+	@for a in $(ADAPTERS); do \
+		echo "Building $$a for $(PLATFORMS)..."; \
+		$(RETRY) docker buildx build $(builder_flag) --platform $(PLATFORMS) \
+			--build-arg BASE_REGISTRY=$(BASE_REGISTRY) --build-arg ADAPTER_VERSION=$(VERSION) \
+			--file adapters/$$a/Dockerfile . || exit 1; \
+	done
+
+publish: ## Build and push multi-arch images under emulation, from one machine (requires VERSION=vX.Y.Z; the release workflow uses publish-arch and publish-manifest instead)
+	@if ! echo "$(VERSION)" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$$'; then \
+		echo "Error: VERSION must be in the form v<major>.<minor>.<patch>"; exit 1; fi
+	@for a in $(ADAPTERS); do \
+		echo "Publishing $$a $(VERSION) for $(PLATFORMS)..."; \
+		$(RETRY) docker buildx build $(builder_flag) --platform $(PLATFORMS) --push \
+			--build-arg BASE_REGISTRY=$(BASE_REGISTRY) --build-arg ADAPTER_VERSION=$(VERSION) \
+			--tag $(call image,$$a):$(VERSION) \
+			--file adapters/$$a/Dockerfile . || exit 1; \
+	done
+
+# ── Multi-arch publish from native runners ────────────────────────────────────
+# The release workflow builds on an amd64 and on an arm64 runner (no
+# emulation), self-tests there and pushes what it tested under
+# <image>:<version>-<arch>. A last job joins the two into <image>:<version>.
+
+ARCH ?= $(shell uname -m | sed -e 's/^x86_64$$/amd64/' -e 's/^aarch64$$/arm64/')
+ARCHS ?= amd64 arm64
+
+publish-arch: ## Push the local images of this machine as <image>:$(VERSION)-$(ARCH) (build and self-test them first)
+	@if ! echo "$(VERSION)" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$$'; then \
+		echo "Error: VERSION must be in the form v<major>.<minor>.<patch>"; exit 1; fi
+	@for a in $(ADAPTERS); do \
+		got=$$(docker image inspect --format '{{.Architecture}}' $(call image,$$a):$(VERSION)) || exit 1; \
+		if [ "$$got" != "$(ARCH)" ]; then echo "Error: $$a:$(VERSION) is $$got, not $(ARCH)"; exit 1; fi; \
+		echo "Pushing $$a $(VERSION) for linux/$(ARCH)..."; \
+		docker tag $(call image,$$a):$(VERSION) $(call image,$$a):$(VERSION)-$(ARCH) || exit 1; \
+		$(RETRY) docker push --quiet $(call image,$$a):$(VERSION)-$(ARCH) || exit 1; \
+	done
+
+publish-manifest: ## Join the per-architecture images of VERSION into the multi-arch <image>:$(VERSION)
+	@for a in $(ADAPTERS); do \
+		echo "Creating $$a $(VERSION) from: $(ARCHS)"; \
+		$(RETRY) docker buildx imagetools create --tag $(call image,$$a):$(VERSION) \
+			$(foreach arch,$(ARCHS),$(call image,$$a):$(VERSION)-$(arch)) || exit 1; \
+		for arch in $(ARCHS); do \
+			$(RETRY) docker buildx imagetools inspect $(call image,$$a):$(VERSION) --format '{{json .Manifest}}' \
+				| tr -d ' \n' | grep -q "\"architecture\":\"$$arch\"" || { echo "Error: $$a:$(VERSION) has no linux/$$arch image"; exit 1; }; \
+		done; \
+	done
+
+digests: ## Print "<adapter> <digest>" of the published multi-arch images of VERSION
+	@for a in $(ADAPTERS); do \
+		d=$$($(RETRY) docker buildx imagetools inspect $(call image,$$a):$(VERSION) --format '{{.Manifest.Digest}}') || exit 1; \
+		echo "$$a $$d"; \
+	done
+
+# ── Clean ─────────────────────────────────────────────────────────────────────
+
+clean: ## Remove test containers, networks, local images and reports
+	@docker ps -aq --filter "label=sparkplugb-interop.run" | xargs -r docker rm -f -v >/dev/null 2>&1 || true
+	@docker network ls --format '{{.Name}}' | grep '^sparkplugb-interop-' | xargs -r docker network rm >/dev/null 2>&1 || true
+	@for a in $(ADAPTERS); do docker rmi $(call image,$$a):$(VERSION) 2>/dev/null || true; done
+	@rm -rf reports

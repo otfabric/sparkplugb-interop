@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/otfabric/sparkplugb-interop/schemas/call-result.schema.json",
+  "title": "sparkplugb-interop call result document",
+  "description": "What 'sparkplugb-interop call' prints: one JSON line. See docs/CONTAINER_CONTRACT.md#call-result-document.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "adapter", "operation", "ok", "error", "result", "elapsedMs"],
+  "properties": {
+    "schemaVersion": {"const": "1.0"},
+    "adapter": {"type": "string", "pattern": "^[a-z0-9-]+$"},
+    "operation": {"type": "string", "minLength": 1},
+    "ok": {"type": "boolean"},
+    "error": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["code", "detail"],
+          "properties": {
+            "code": {"enum": ["invalid-request", "not-connected", "timeout", "unsupported"]},
+            "detail": {"type": "string"}
+          }
+        }
+      ]
+    },
+    "result": {"type": ["object", "null"]},
+    "elapsedMs": {"type": "number", "minimum": 0}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"ok": {"const": true}}},
+      "then": {"properties": {"error": {"type": "null"}, "result": {"type": "object"}}},
+      "else": {"properties": {"error": {"type": "object"}}}
+    },
+    {
+      "if": {"properties": {"ok": {"const": true}, "operation": {"const": "publish-data"}}},
+      "then": {
+        "properties": {
+          "result": {
+            "required": ["published"],
+            "properties": {
+              "published": {"type": "array", "items": {"type": "string", "pattern": "^(NDATA|DDATA/.+)$"}}
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"ok": {"const": true}, "operation": {"const": "nodes"}}},
+      "then": {
+        "properties": {
+          "result": {
+            "required": ["nodes"],
+            "properties": {
+              "nodes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["group", "edgeNode", "online", "bdSeq", "devices"],
+                  "properties": {
+                    "group": {"type": "string"},
+                    "edgeNode": {"type": "string"},
+                    "online": {"type": "boolean"},
+                    "bdSeq": {"type": ["integer", "null"], "minimum": 0, "maximum": 255},
+                    "devices": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": ["device", "online"],
+                        "properties": {
+                          "device": {"type": "string"},
+                          "online": {"type": "boolean"}
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

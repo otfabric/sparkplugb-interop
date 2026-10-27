@@ -1,0 +1,12 @@
+{
+  "name": "sparkplugb-interop-tahu-js",
+  "version": "0.0.0",
+  "private": true,
+  "description": "sparkplugb-interop adapter for the Eclipse Tahu JavaScript sparkplug-client",
+  "license": "MIT",
+  "main": "adapter/sparkplugb-interop.js",
+  "engines": {"node": ">=22"},
+  "dependencies": {
+    "sparkplug-client": "3.2.4"
+  }
+}

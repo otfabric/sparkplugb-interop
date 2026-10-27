@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "dependencies": {
+    "net10.0": {
+      "SparkplugNet": {
+        "type": "Direct",
+        "requested": "[1.4.1, 1.4.1]",
+        "resolved": "1.4.1",
+        "contentHash": "+Vp9NbRtiuNAmSPdgfPwW/Ie1ZuEwHQW9p8hIyYlFXsfqVPybFHEWoBIWUKwRW222wbjoQ3s7ktiiOTSXdq/9w==",
+        "dependencies": {
+          "MQTTnet": "5.2.0.1603",
+          "Microsoft.Extensions.Logging.Abstractions": "10.0.11",
+          "protobuf-net": "3.3.21"
+        }
+      },
+      "Microsoft.Extensions.DependencyInjection.Abstractions": {
+        "type": "Transitive",
+        "resolved": "10.0.11",
+        "contentHash": "/a1aJz4m7ylhEDf25ugQChLQoN5XwoGjWw/BoR/ZWWKsO1v4DdJElS1uyngahz4B/eOzjFk1KNTkarRLE5wsIg=="
+      },
+      "Microsoft.Extensions.Logging.Abstractions": {
+        "type": "Transitive",
+        "resolved": "10.0.11",
+        "contentHash": "Ljd0Uxoq5XpScD2Bg0nM/r3mwx7Ao5Uq24eo2ARxbGvqJ7Zht6rt2cJtwVRH4Cv+1ZVMdXz6TB43KbpmsxRrvQ==",
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.11"
+        }
+      },
+      "MQTTnet": {
+        "type": "Transitive",
+        "resolved": "5.2.0.1603",
+        "contentHash": "iNuWVo/568aRo2ExEN2qkC4J5b07ckKqt+9Uok2kIbbK7PMBsXvYiKVENPHmOBWFB5ExhlNQb/qQ8M9/IYRTdQ=="
+      },
+      "protobuf-net": {
+        "type": "Transitive",
+        "resolved": "3.3.21",
+        "contentHash": "o6fDHWb+/2dogq5JsFBp0kyidznG1T0leCyqh9jVBEbrzLc5E1oYC95Hkix/AxsH9ORGXFpLciFgoNz//N53iw==",
+        "dependencies": {
+          "protobuf-net.Core": "3.3.21"
+        }
+      },
+      "protobuf-net.Core": {
+        "type": "Transitive",
+        "resolved": "3.3.21",
+        "contentHash": "qARODs9k5/mw44Il2tIJaDV6s3Tm8qGVgG9RI07c1PxFYiFyMOqPkaFjbgNPBLWRtop57ktDPaMDzf+6TYpdcg=="
+      }
+    }
+  }
+}

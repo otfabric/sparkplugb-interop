@@ -1,0 +1,144 @@
+name: Release
+run-name: "Release ${{ github.ref_name }}"
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write   # create the GitHub release
+  packages: write   # push to GHCR
+
+env:
+  REGISTRY: ghcr.io/otfabric
+  # Nothing is pulled from Docker Hub: anonymous pulls are rate limited per
+  # runner address and its token service times out under load. Base images
+  # and brokers (pinned by digest) and build tooling come from Google's mirror
+  # of it, and every registry operation is retried on transient failures
+  # (scripts/retry.sh).
+  BASE_REGISTRY: mirror.gcr.io/library
+  BROKER_REGISTRY: mirror.gcr.io
+  TOOLS_REGISTRY: mirror.gcr.io
+  VERSION: ${{ github.ref_name }}
+
+jobs:
+  # One job per architecture on a runner of that architecture: the images are
+  # built natively, self-tested, and exactly those are pushed, as
+  # <image>:<version>-<arch>.
+  build:
+    name: Build, test, push (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install jsonschema
+
+      - name: Validate
+        run: |
+          scripts/check-versions.sh
+          python3 scripts/validate-fixtures.py --require-schema
+          want="interop_version: \"${VERSION#v}\""
+          grep -qF "$want" versions.yaml || { echo "::error::versions.yaml does not say $want"; exit 1; }
+          # The notes of this version become the body of the GitHub release.
+          scripts/release-notes.sh "${VERSION}" > /dev/null || { echo "::error::RELEASE.md has no notes for ${VERSION}"; exit 1; }
+
+      - name: Build for linux/${{ matrix.arch }} and self-test
+        run: |
+          make images
+          make documents
+
+      - name: Login to GHCR
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s' "${GHCR_TOKEN}" > "${RUNNER_TEMP}/ghcr-token"
+          # shellcheck disable=SC2016  # $0 and $1 are for the inner shell
+          scripts/retry.sh sh -c 'docker login ghcr.io --username "$0" --password-stdin < "$1"' \
+            "${{ github.actor }}" "${RUNNER_TEMP}/ghcr-token"
+          rm -f "${RUNNER_TEMP}/ghcr-token"
+
+      - name: Push the tested images as ${{ github.ref_name }}-${{ matrix.arch }}
+        run: make publish-arch ARCH=${{ matrix.arch }}
+
+  # Joins the per-architecture images into the multi-arch tag and publishes
+  # the release. Nothing is built here.
+  release:
+    name: Multi-arch manifest and release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    needs: build
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Login to GHCR
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s' "${GHCR_TOKEN}" > "${RUNNER_TEMP}/ghcr-token"
+          # shellcheck disable=SC2016  # $0 and $1 are for the inner shell
+          scripts/retry.sh sh -c 'docker login ghcr.io --username "$0" --password-stdin < "$1"' \
+            "${{ github.actor }}" "${RUNNER_TEMP}/ghcr-token"
+          rm -f "${RUNNER_TEMP}/ghcr-token"
+
+      - name: Create ${{ github.ref_name }} from the amd64 and arm64 images
+        run: make publish-manifest
+
+      - name: Digests and manifest.json
+        run: |
+          make -s digests | tee digests.txt
+          scripts/release-manifest.sh "${VERSION}" digests.txt > manifest.json
+          cat manifest.json
+          sha256sum manifest.json > checksums.txt
+
+      # The body is the section of this version in RELEASE.md (up to its
+      # "---", as in every otfabric repository), followed by the images.
+      - name: Write the release body
+        run: |
+          {
+            scripts/release-notes.sh "${VERSION}"
+            echo
+            echo "## Images"
+            echo
+            echo "| Image | Digest |"
+            echo "|-------|--------|"
+            while read -r adapter digest; do
+              echo "| \`${REGISTRY}/sparkplugb-interop-${adapter}:${VERSION}\` | \`${digest}\` |"
+            done < digests.txt
+            echo
+            echo "## Brokers"
+            echo
+            jq -r '.brokers | to_entries[] | "- `\(.value.image)`"' manifest.json
+            echo
+            echo "## Pinning in a consumer"
+            echo
+            echo '```bash'
+            while read -r adapter digest; do
+              var=$(echo "${adapter}" | tr 'a-z-' 'A-Z_')
+              echo "SPARKPLUGB_INTEROP_${var}_IMAGE=${REGISTRY}/sparkplugb-interop-${adapter}@${digest}"
+            done < digests.txt
+            echo '```'
+            echo
+            echo "\`manifest.json\` records the upstream versions these images were built from and the brokers they were tested on. The images contain EPL-2.0, Apache-2.0, MIT and BSD software; see \`THIRD_PARTY_NOTICES.md\` and \`/licenses\` in each image."
+          } > "${RUNNER_TEMP}/release-body.md"
+          cat "${RUNNER_TEMP}/release-body.md"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v3
+        with:
+          name: sparkplugb-interop ${{ github.ref_name }}
+          body_path: ${{ runner.temp }}/release-body.md
+          files: |
+            manifest.json
+            checksums.txt

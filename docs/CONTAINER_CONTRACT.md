@@ -293,7 +293,11 @@ repository. An unknown name is exit 1.
 ## Gaps before 1.0
 
 - [ ] Templates, DataSets, arrays and properties are not in any fixture.
-- [ ] MQTT 5, TLS and authentication to the broker are not specified.
+- [ ] The MQTT version is not specified. Every adapter connects with MQTT
+      3.1.1 except srad, whose client (rumqttc) speaks MQTT 5 only. TLS and
+      authentication to the broker are not specified either.
+- [ ] A consumer cannot ask for a client ID with every host: sparkplughost
+      derives it from the host ID, so `--client-id` must equal `--host-id`.
 - [ ] A host's handling of out-of-order messages (the reorder timeout) has
       no test that does not depend on timing.
 - [ ] Applications that are not the primary host (no STATE) are not a role.

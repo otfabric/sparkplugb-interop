@@ -5,14 +5,39 @@
 # pinning an older release or hiding it.
 #
 # Columns, separated by tabs:
-#   1  adapter
-#   2  upstream version, as print-capabilities reports it
-#   3  extended regular expression matched against the step name: births,
-#      update-N, write, rebirth-command, device-death, device-birth,
-#      rebirth-call, nodes, graceful-death, will, primary-host-offline
-#   4  what is wrong (docs/COMPATIBILITY.md has the details)
+#   1  implementation (adapter name) that has the bug
+#   2  its upstream version, as print-capabilities reports it
+#   3  the role the bug is in: edge or host
+#   4  peer: regular expression on the adapter of the other role
+#   5  broker: regular expression on the broker name
+#   6  fixture: regular expression on the fixture name
+#   7  step: regular expression on the step name: births, update-N, write,
+#      rebirth-command, device-death, device-birth, rebirth-call, nodes,
+#      graceful-death, will, primary-host-offline
+#   8  what is wrong (docs/COMPATIBILITY.md has the details)
 #
-# In a pairing that involves the adapter at that version, a matching step may
-# fail and is counted as a known bug rather than as a failure. If it passes in
-# every pairing that ran it, the run fails: the entry is stale.
-pysparkplug	0.6.1	^graceful-death$	EdgeNode advances bdSeq again after NBIRTH, so the NDEATH of disconnect() carries bdSeq+1 and hosts keep the node online
+# Expressions match the whole name. In a pairing where the adapter of that
+# role is that implementation at that version and columns 4 to 7 match, the
+# step may fail and is counted as a known bug rather than as a failure. If it
+# passes in every pairing that ran it, the run fails: the entry is stale.
+# Entries that need a particular peer or broker are only checked for
+# staleness in runs that include them. An entry whose description starts with
+# "Intermittent:" is never stale: the bug shows only in some runs.
+implementation	version	role	peer	broker	fixture	step	description
+pysparkplug	0.6.1	edge	.*	.*	.*	graceful-death	EdgeNode advances bdSeq again after NBIRTH, so the NDEATH of disconnect() carries bdSeq+1 and hosts keep the node online
+pysparkplug	0.6.1	host	tahu|tahu-js|sparkplugnet	.*	scalars	.*	Decodes Int8 and Int16 only as width-sized two's complement: a negative value sign-extended to 32 bits (as Tahu, tahu-js and SparkplugNet encode it) raises OverflowError and the whole NBIRTH is dropped
+pysparkplug	0.6.1	host	srad	.*	.*	graceful-death|will	Cannot decode a metric without a datatype, such as the bdSeq metric of srad's NDEATH and will, so the host keeps the node online
+pysparkplug	0.6.1	edge	srad|tahu	.*	baseline	write|device-death|device-birth|nodes|rebirth-call|graceful-death	Cannot decode a command metric without a datatype (Sparkplug requires the datatype in births only): the edge node fails on an NCMD of srad or Tahu and disconnects
+srad	0.5.0	edge	.*	nanomq	.*	births|will	Intermittent: NanoMQ 0.25.7 publishes the will after an MQTT 5 DISCONNECT with reason 0 (srad's client speaks MQTT 5 only): a late NDEATH can take the restarted node offline
+pysparkplug	0.6.1	host	.*	nanomq|hivemq-ce	.*	.*	Intermittent: does not reorder the messages of an edge node by seq. MQTT orders messages per topic only, and NanoMQ and HiveMQ CE deliver messages of one node on different topics out of publishing order; the host takes the gap for a lost message, drops or misreads data, and requests a rebirth
+srad	0.5.0	host	.*	nanomq|hivemq-ce	.*	.*	Intermittent: does not reorder the messages of an edge node by seq. MQTT orders messages per topic only, and NanoMQ and HiveMQ CE deliver messages of one node on different topics out of publishing order; the host takes the gap for a lost message, drops or misreads data, and requests a rebirth
+sparkplughost	v0.4.0	host	.*	nanomq|hivemq-ce	.*	.*	Intermittent: does not reorder the messages of an edge node by seq. MQTT orders messages per topic only, and NanoMQ and HiveMQ CE deliver messages of one node on different topics out of publishing order; the host takes the gap for a lost message, drops or misreads data, and requests a rebirth
+tahu-js	3.2.4	edge	srad|tahu	.*	.*	write|rebirth-command|device-death|device-birth|rebirth-call	Cannot decode a command metric without a datatype (Sparkplug requires the datatype in births only, and srad and Tahu omit it): the value is null and the command is not applied
+tahu-js	3.2.4	edge	srad|sparkplugnet	.*	scalars	births|update-[0-9]+|rebirth-command|rebirth-call	Encodes UInt32 in long_value, where Sparkplug puts it in int_value (Google Protocol Buffer type uint32): srad rejects the metric, SparkplugNet reads 0
+sparkplugnet	1.4.1	edge	.*	.*	baseline	write|device-death|device-birth	SparkplugNode filters the metrics of a DCMD against the node's metrics, not the device's, and resolves no aliases in commands (srad addresses them by alias): device writes and alias-addressed writes are dropped, so the data seq the hosts expect is off by one
+sparkplugnet	1.4.1	host	.*	.*	.*	device-death|graceful-death|will	SparkplugApplication updates its node and device states on NDEATH and DDEATH through a lazy iterator it never enumerates: dead nodes and devices stay online
+sparkplugnet	1.4.1	host	pysparkplug|srad	.*	scalars	births|nodes|graceful-death|will	Decodes Int8 and Int16 only as int_value sign-extended to 32 bits: the width-sized two's complement form (pysparkplug, srad) throws OverflowException and the whole NBIRTH is dropped
+sparkplugnet	1.4.1	host	srad	.*	.*	graceful-death|will	Throws on a metric without a datatype (the bdSeq metric of srad's NDEATH and will) and drops the NDEATH, so the node stays online
+sparkplugnet	1.4.1	host	pysparkplug	.*	baseline	write|device-death|device-birth	Sets seq in NCMD and DCMD, which Sparkplug forbids (tck-id-payloads-ncmd-seq): pysparkplug's edge raises TypeError on such a command
+tahu	1.0.21	edge	srad|sparkplugnet	.*	scalars	births|update-[0-9]+|rebirth-command|rebirth-call	Encodes UInt32 in long_value, where Sparkplug puts it in int_value (Google Protocol Buffer type uint32): srad rejects the metric, SparkplugNet reads 0
+tahu	1.0.21	host	srad	.*	baseline	device-birth|rebirth-call|graceful-death|births|will	On a DBIRTH after a DDEATH, TahuPayloadHandler keeps the device's old aliases, rejects the DBIRTH ("Not adding duplicated alias") and requests a rebirth

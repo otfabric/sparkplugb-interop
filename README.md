@@ -1,165 +1,186 @@
-# sparkplugb-interop
+# sparkplugb-interop — Sparkplug B 3.0.0 Interoperability Testing with Docker
 
-[![Go](https://img.shields.io/badge/Go-1.27-00ADD8?logo=go&logoColor=white)](https://go.dev) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![CI](https://github.com/otfabric/sparkplugb-interop/actions/workflows/ci.yaml/badge.svg)](https://github.com/otfabric/sparkplugb-interop/actions/workflows/ci.yaml)
+A Docker-based interoperability testing framework for
+[Sparkplug B 3.0.0](https://sparkplug.eclipse.org/specification/), providing
+independent edge node and host application implementations, deterministic
+fixtures, and automated cross-stack testing on four MQTT brokers.
+Test Sparkplug B libraries against established implementations including
+Eclipse Tahu (Java and JavaScript), pysparkplug, SparkplugNet, srad and
+sparkplughost. Reference implementations are independently containerized, so
+third-party stacks never have to be integrated into the library under test.
 
-Docker-based interoperability and chaos test infrastructure for
-[Sparkplug B 3.0.0](https://www.eclipse.org/tahu/spec/sparkplug_spec.pdf)
-implementations. Tests any Sparkplug B library against a matrix of four MQTT
-brokers with end-to-end lifecycle tests and resilience scenarios. Built on
-[go-sparkplugb](https://github.com/otfabric/go-sparkplugb).
+| Adapter | Implementation | Language | Edge | Host | Image |
+|---------|----------------|----------|:----:|:----:|-------|
+| `tahu` | [Eclipse Tahu](https://github.com/eclipse-tahu/tahu) 1.0.21 | Java | yes | yes | `ghcr.io/otfabric/sparkplugb-interop-tahu` |
+| `pysparkplug` | [pysparkplug](https://github.com/matteosox/pysparkplug) 0.6.1 | Python | yes | yes | `ghcr.io/otfabric/sparkplugb-interop-pysparkplug` |
+| `sparkplugnet` | [SparkplugNet](https://github.com/SeppPenner/SparkplugNet) 1.4.1 | C# | yes | yes | `ghcr.io/otfabric/sparkplugb-interop-sparkplugnet` |
+| `srad` | [srad](https://github.com/dpazj/srad) 0.5.0 | Rust | yes | yes | `ghcr.io/otfabric/sparkplugb-interop-srad` |
+| `tahu-js` | [Eclipse Tahu sparkplug-client](https://github.com/eclipse-tahu/tahu/tree/master/javascript) 3.2.4 | JavaScript | yes | no | `ghcr.io/otfabric/sparkplugb-interop-tahu-js` |
+| `sparkplughost` | [EvergenEnergy/sparkplughost](https://github.com/EvergenEnergy/sparkplughost) v0.4.0 | Go | no | yes | `ghcr.io/otfabric/sparkplugb-interop-sparkplughost` |
 
----
+| Broker | Version | Image (pinned by digest in [versions.yaml](versions.yaml)) |
+|--------|---------|-------|
+| Eclipse Mosquitto | 2.1.2 | `eclipse-mosquitto:2.1.2-alpine` |
+| HiveMQ Community Edition | 2026.5 | `hivemq/hivemq-ce:2026.5` |
+| EMQX | 6.3.2 | `emqx/emqx:6.3.2` |
+| NanoMQ | 0.25.7 | `emqx/nanomq:0.25.7` |
+
+The stacks do not all do the same: only Tahu (Java) waits for a primary host,
+Tahu and tahu-js rebirth on `Node Control/Rebirth`, pysparkplug and
+SparkplugNet edges publish data by name rather than alias, and SparkplugNet's
+host neither resolves aliases nor checks `seq`. Each image says what it
+supports (`print-capabilities`); see [docs/CAPABILITIES.md](docs/CAPABILITIES.md).
+
+Evaluated and left out: Tahu C and Node-RED. See [PLAN.md](PLAN.md).
+
+**Docs:** [docs/CONTAINER_CONTRACT.md](docs/CONTAINER_CONTRACT.md) (commands, events, call results, exit codes) · [docs/FIXTURES.md](docs/FIXTURES.md) (the simulated edge nodes) · [docs/CAPABILITIES.md](docs/CAPABILITIES.md) · [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) (pins, cross-stack matrix, findings) · [REQUIREMENTS.md](REQUIREMENTS.md) · [PLAN.md](PLAN.md) · [RELEASE.md](RELEASE.md)
+
+## Table of contents
+
+- [sparkplugb-interop — Sparkplug B 3.0.0 Interoperability Testing with Docker](#sparkplugb-interop--sparkplug-b-300-interoperability-testing-with-docker)
+  - [Table of contents](#table-of-contents)
+  - [What this repository is, and is not](#what-this-repository-is-and-is-not)
+  - [Quick start](#quick-start)
+  - [Using the images from a library's tests](#using-the-images-from-a-librarys-tests)
+  - [Repository layout](#repository-layout)
+  - [Development](#development)
+  - [Security](#security)
+  - [License](#license)
+
+## What this repository is, and is not
+
+It owns the reference implementations, their adapters, the fixtures, the
+container contract, the images and the self-tests that show the references
+agree with each other on every broker.
+
+It does not contain, import, build or know about any library under test.
+[otfabric/go-sparkplugb](https://github.com/otfabric/go-sparkplugb) is a
+consumer: it pulls the images and owns its own scenarios, assertions and
+compatibility claims. A passing self-test here says the *references*
+interoperate; it says nothing about a consumer.
+
+The fixtures describe what an edge node is; the adapters make each
+implementation behave that way; the consumer decides what to assert.
 
 ## Quick start
 
-```bash
-# Start the full broker matrix
-docker compose up -d
+Needs Docker and `jq`.
 
-# Wait for all brokers to accept connections
-go run ./cmd/wait-brokers
-
-# Run E2E and chaos tests against every broker
-go test -tags e2e ./tests/... -v -timeout=120s
-
-# Or use the Makefile (starts brokers, waits, tests, tears down)
-make e2e
+```sh
+make images      # build the adapter images for this machine
+make smoke       # container contract of each image
+make interop     # every host against every edge, every fixture, on Mosquitto
+make interop BROKER=nanomq
 ```
 
-## Broker matrix
+An edge node and a host application, on one broker:
 
-| Broker         | Version   | MQTT 3.1.1 | MQTT 5.0 | Port | Image                                      |
-|----------------|-----------|:----------:|:--------:|------|---------------------------------------------|
-| Mosquitto      | 2.0.21    | ✓          | ✓        | 1883 | `eclipse-mosquitto:2.0.21`                  |
-| HiveMQ CE      | 2024.12   | ✓          | ✓        | 1884 | `hivemq/hivemq-ce:2024.5`                  |
-| EMQX           | 5.8.6     | ✓          | ✓        | 1885 | `emqx/emqx:5.8.6`                          |
-| NanoMQ         | 0.21      | ✓          | ✓        | 1886 | `emqx/nanomq:0.21`                         |
-
-All brokers are configured for anonymous access on loopback only. These are
-test brokers and must not be exposed to any other network.
-
-## Architecture
-
-```
-sparkplugb-interop
-├── brokers/              MQTT broker configurations
-│   ├── mosquitto/        Eclipse Mosquitto 2.0 (port 1883)
-│   ├── hivemq-ce/        HiveMQ Community Edition (port 1884)
-│   ├── emqx/             EMQX 5.8 (port 1885)
-│   └── nanomq/           NanoMQ 0.21 (port 1886)
-├── harness/              Go test harness (broker config, wait helpers)
-├── tests/                Test suites
-│   ├── e2e_test.go       End-to-end lifecycle tests
-│   └── chaos_test.go     Chaos and resilience tests
-├── cmd/wait-brokers/     Broker readiness CLI
-├── fixtures/             Reference payloads and scenario definitions
-├── adapters/             Independent Sparkplug implementations
-│   ├── tahu/             Eclipse Tahu — Java (Edge + Host)
-│   ├── sparkplugnet/     SparkplugNet — C# (Edge + Host)
-│   ├── hivemqtt-sparkplug/ HiveMQtt.Sparkplug — C# (Edge + Host)
-│   ├── node-red-sparkplug/ Node-RED Sparkplug Plus — JS (Edge + Sub)
-│   ├── srad/             srad — Rust (Edge + Application)
-│   ├── pysparkplug/      PySparkplug — Python (Edge + Sub)
-│   ├── nautilus/         Nautilus — Go (Edge + Host)
-│   └── evergen-host/     Evergen Sparkplug Host — Go (Host)
-├── compose.yaml          Docker Compose orchestration
-├── versions.yaml         Pinned broker and adapter versions
-└── Makefile              Build and test targets
+```sh
+docker network create sp
+docker run -d --name broker --network sp eclipse-mosquitto:2.1.2-alpine mosquitto -c /mosquitto-no-auth.conf
+docker run -d --name host --network sp ghcr.io/otfabric/sparkplugb-interop-srad:dev host --broker tcp://broker --host-id h1
+docker run -d --name edge --network sp ghcr.io/otfabric/sparkplugb-interop-tahu:dev edge --broker tcp://broker
+docker exec edge sparkplugb-interop call publish-data --payload '{"update": 0}'
+docker exec host sparkplugb-interop call nodes | jq .
+docker logs host | jq -c 'select(.event == "message") | {type, edgeNode, device, seq}'
 ```
 
-## Test suites
+Every image has the same commands:
 
-Every test runs against all four brokers via `t.Run(broker.Name, ...)`.
-
-### End-to-end (`tests/e2e_test.go`)
-
-| Test               | Description                                                  |
-|--------------------|--------------------------------------------------------------|
-| EdgeLifecycle      | Connect, NBIRTH, DBIRTH, NDATA, DDATA, graceful disconnect   |
-| HostDiscovery      | Host sees NBIRTH/DBIRTH, tracks node/device state            |
-| AliasRoundTrip     | Metric aliases in NBIRTH resolve correctly in NDATA          |
-| RebirthCycle       | Host detects seq gap, sends rebirth command, node re-births  |
-
-### Chaos (`tests/chaos_test.go`)
-
-| Test                 | Description                                                |
-|----------------------|------------------------------------------------------------|
-| RapidReconnect       | 50 connect/disconnect cycles in quick succession           |
-| MalformedPayload     | Garbage bytes on Sparkplug topics — host must not crash    |
-| ConcurrentEdgeNodes  | 10 edge nodes publishing simultaneously                    |
-| ConnectionDrop       | Abrupt TCP close mid-session, verify clean recovery        |
-
-## Running tests
-
-### Prerequisites
-
-- **Docker** and **Docker Compose** (v2)
-- **Go 1.27+**
-
-### Full workflow (recommended)
-
-```bash
-make e2e
+```text
+edge                 a Sparkplug edge node with the metrics and devices of a fixture
+host                 a primary Sparkplug host application
+call <operation>     drive a running edge or host: publish-data, rebirth, device-death,
+                     device-birth, send-command, request-rebirth, nodes
+print-capabilities   what this adapter supports, as JSON
+print-fixture        the fixture baked into the image
 ```
 
-This starts all brokers, waits for readiness, runs the E2E and chaos suites,
-and tears down the containers.
+`edge` and `host` write what they publish and receive to stdout as JSON
+Lines; `call` returns a result document. Both are specified by JSON Schemas
+in [schemas/](schemas/).
 
-### Manual steps
+## Using the images from a library's tests
 
-```bash
-# 1. Start brokers
-docker compose up -d
+A consumer needs Docker, the image references and its own test code. It does
+not clone this repository.
 
-# 2. Wait for all four brokers to accept TCP connections
-go run ./cmd/wait-brokers
+**Library as host, reference as edge.** Start a broker and the library's host,
+then the reference edge, and wait for its readiness file (never for a delay):
 
-# 3. Run E2E tests
-go test -tags e2e ./tests/... -v -timeout=120s
-
-# 4. Run unit tests (harness only, no brokers needed)
-go test ./harness/... -v
-
-# 5. Tear down
-docker compose down
+```sh
+docker run -d --name edge --network sp ghcr.io/otfabric/sparkplugb-interop-tahu:<tag> edge --broker tcp://broker --fixture scalars
+until docker exec edge test -f /run/sparkplugb-interop/ready; do sleep 0.1; done
+docker exec edge sparkplugb-interop call publish-data --payload '{"update": 0}'
 ```
 
-## Adapters
+The edge's stdout says what it published (`published`) and which commands it
+applied (`command`): assert that the library's view of the node matches.
 
-Each adapter wraps an independent Sparkplug B implementation in a container
-with a standardised interface. Adapters never import `go-sparkplugb`.
+**Library as edge, reference as host.** Start the reference host, connect the
+library's edge node, and read what the host saw: its `message` events, and
+`call nodes` for its view of every node, device and metric. `call
+send-command` and `call request-rebirth` make the host command the library.
 
-| Adapter                 | Language   | Roles                    | Status  | Source |
-|-------------------------|------------|--------------------------|---------|--------|
-| Eclipse Tahu            | Java       | Edge + Host              | Planned | [eclipse/tahu](https://github.com/eclipse/tahu) |
-| SparkplugNet            | C#         | Edge + Host              | Planned | [SeppPenner/SparkplugNet](https://github.com/SeppPenner/SparkplugNet) |
-| HiveMQtt.Sparkplug      | C#         | Edge + Host              | Planned | [hivemq/hivemq-mqtt-client-dotnet](https://github.com/hivemq/hivemq-mqtt-client-dotnet) |
-| Node-RED Sparkplug Plus | JavaScript | Edge + Decoding/Sub      | Planned | [node-red-contrib-sparkplug-plus](https://flows.nodered.org/node/node-red-contrib-sparkplug-plus) |
-| srad                    | Rust       | Edge + Application       | Planned | [srad](https://crates.io/crates/srad) |
-| PySparkplug             | Python     | Edge + Subscriber/Client | Planned | [matteosox/pysparkplug](https://github.com/matteosox/pysparkplug) |
-| Nautilus                | Go         | Edge + Host              | Planned | [EvergenEnergy/nautilus](https://github.com/EvergenEnergy/nautilus) |
-| Evergen Sparkplug Host  | Go         | Host                     | Planned | [EvergenEnergy/sparkplughost](https://github.com/EvergenEnergy/sparkplughost) |
+**Expected values** come from the image: `print-fixture scalars` prints the
+fixture it was built with, so expectations cannot drift from the image.
 
-## Fixtures
+**What a stack supports** comes from the image too: `print-capabilities`.
+Skip, do not fail, a scenario that needs a feature or a datatype an image
+does not declare.
 
-The `fixtures/` directory contains:
+**Pin by digest** in release qualification
+(`ghcr.io/otfabric/sparkplugb-interop-tahu@sha256:...`); the digests are in
+each release's `manifest.json` and its notes.
 
-- **Protobuf-encoded reference payloads** for each Sparkplug B message type
-  (NBIRTH, NDEATH, DBIRTH, DDEATH, NDATA, DDATA)
-- **JSON scenario definitions** for lifecycle tests
-  (`edge-lifecycle.json`, `host-lifecycle.json`, `alias-roundtrip.json`,
-  `rebirth-cycle.json`)
-- **Golden outputs** for decode verification
+## Repository layout
 
-## Makefile targets
+```text
+sparkplugb-interop/
+├── adapters/
+│   ├── tahu/            Java adapter: Dockerfile, pom.xml, src/
+│   ├── pysparkplug/     Python adapter: Dockerfile, requirements (hashed), adapter/
+│   ├── sparkplugnet/    C# adapter: Dockerfile, adapter/
+│   ├── srad/            Rust adapter: Dockerfile, Cargo.toml, src/
+│   ├── tahu-js/         JavaScript adapter: Dockerfile, package.json, adapter/
+│   └── sparkplughost/   Go adapter: Dockerfile, go.mod, main.go, overlay/
+├── fixtures/
+│   ├── schema/          JSON Schema of the fixture format
+│   ├── baseline/        an edge node with two devices and writable metrics
+│   └── scalars/         an edge node with every scalar datatype
+├── schemas/             JSON Schemas of capabilities, events and call results
+├── tests/known-bugs.tsv bugs of upstream versions, scoped by role, peer, broker, fixture and step
+├── scripts/             validate, smoke, cross-stack self-test, release manifest
+├── docs/                contract, fixtures, capabilities, compatibility
+├── versions.yaml        every upstream pin, broker and base image digest
+└── Makefile
+```
 
-| Target         | Description                                          |
-|----------------|------------------------------------------------------|
-| `make test`    | Run harness unit tests (no Docker needed)            |
-| `make e2e`     | Full workflow: start brokers, wait, test, tear down  |
-| `make lint`    | Run `go vet` on all packages                         |
-| `make clean`   | Tear down brokers and remove coverage files          |
+## Development
+
+```sh
+make help        # all targets
+make ci          # validate, lint, build, smoke, cross-stack self-test, document schemas
+make validate    # fixtures, versions.yaml and RELEASE.md
+make interop-brokers   # the cross-stack self-test on every broker
+make buildx      # check the other architecture locally, under emulation (CI builds both natively)
+```
+
+`make smoke ADAPTERS=srad` and `make interop ADAPTERS="tahu srad"` narrow what
+is run. See [CONTRIBUTING.md](CONTRIBUTING.md) for adding an adapter, a
+fixture or a call operation.
+
+## Security
+
+The brokers accept anonymous clients and the edge nodes apply writes from
+anyone who can publish to them. They are test fixtures: the self-tests put
+them on a private Docker network, and they must never be attached to a plant
+network. See [SECURITY.md](SECURITY.md).
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+The repository's code and documentation, the adapters included, are
+MIT-licensed. The images also contain the upstream stacks and their
+dependencies, each under its own licence (EPL-2.0, Apache-2.0, MIT and
+others). See [LICENSE](LICENSE) and
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

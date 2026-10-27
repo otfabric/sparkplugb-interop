@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: MIT
+# The sparkplugb-interop adapter for srad. Built only in Docker, from
+# Cargo.lock (cargo build --locked); see Dockerfile.
+[package]
+name = "sparkplugb-interop-srad"
+version = "0.0.0"
+edition = "2021"
+license = "MIT"
+publish = false
+
+[[bin]]
+name = "sparkplugb-interop"
+path = "src/main.rs"
+
+[dependencies]
+# The upstream under test. Its rumqtt client pins rumqttc 0.24, whose
+# MqttOptions the adapter builds.
+srad = "=0.5.0"
+rumqttc = "=0.24.0"
+async-trait = "0.1"
+log = "0.4"
+serde_json = { version = "1", features = ["preserve_order"] }
+tokio = { version = "1", features = ["rt", "macros", "signal", "sync", "time", "net", "io-util"] }
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+strip = true

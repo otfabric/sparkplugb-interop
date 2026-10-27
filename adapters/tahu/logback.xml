@@ -1,0 +1,14 @@
+<!-- SPDX-License-Identifier: MIT
+     Replaces the logback.xml inside tahu-core (TRACE to stdout): upstream logs go
+     to stderr only, at SPARKPLUGB_INTEROP_LOG_LEVEL (default WARN). -->
+<configuration>
+  <appender name="STDERR" class="ch.qos.logback.core.ConsoleAppender">
+    <target>System.err</target>
+    <encoder>
+      <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+    </encoder>
+  </appender>
+  <root level="${SPARKPLUGB_INTEROP_LOG_LEVEL:-WARN}">
+    <appender-ref ref="STDERR" />
+  </root>
+</configuration>

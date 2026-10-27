@@ -11,6 +11,8 @@ RUN_ID="${RUN_ID:-$$}"
 NETWORK="sparkplugb-interop-${RUN_ID}"
 READY_FILE="/run/sparkplugb-interop/ready"
 WAIT_TIMEOUT="${WAIT_TIMEOUT:-60}"
+# JVM and Erlang brokers start slowly on a busy runner.
+BROKER_TIMEOUT="${BROKER_TIMEOUT:-180}"
 # Registry of the broker images: a mirror of Docker Hub serves the same
 # digests (see the Makefile).
 BROKER_REGISTRY="${BROKER_REGISTRY:-docker.io}"
@@ -57,7 +59,7 @@ require_tools() {
 network_up() { docker network create "${NETWORK}" >/dev/null; }
 
 cleanup() {
-    docker ps -aq --filter "label=sparkplugb-interop.run=${RUN_ID}" | xargs -r docker rm -f >/dev/null 2>&1
+    docker ps -aq --filter "label=sparkplugb-interop.run=${RUN_ID}" | xargs -r docker rm -f -v >/dev/null 2>&1
     docker network rm "${NETWORK}" >/dev/null 2>&1
     return 0
 }
@@ -67,20 +69,20 @@ run_label() { echo "sparkplugb-interop.run=${RUN_ID}"; }
 # start_broker <name> <container>: starts the pinned broker and waits until it
 # accepts an MQTT CONNECT and PUBLISH (the pinned mosquitto_pub is the probe).
 start_broker() {
-    local broker="$1" name="$2" img probe args=() waited=0
+    local broker="$1" name="$2" img probe args=() start=${SECONDS}
     img=$(broker_image "${broker}") || return 1
     probe=$(broker_image mosquitto) || return 1
     [[ "${broker}" == mosquitto ]] && args=(mosquitto -c /mosquitto-no-auth.conf)
-    docker rm -f "${name}" >/dev/null 2>&1
+    docker rm -f -v "${name}" >/dev/null 2>&1
     docker run -d --name "${name}" --network "${NETWORK}" --label "$(run_label)" \
         "${img}" ${args[@]+"${args[@]}"} >/dev/null || return 1
     until docker run --rm --network "${NETWORK}" --label "$(run_label)" --entrypoint mosquitto_pub \
             "${probe}" -h "${name}" -t interop/probe -m ready -q 1 >/dev/null 2>&1; do
-        if (( waited >= WAIT_TIMEOUT )); then
-            log "broker ${name} (${broker}) not ready after ${WAIT_TIMEOUT}s"; docker logs --tail 20 "${name}" >&2
+        if (( SECONDS - start >= BROKER_TIMEOUT )); then
+            log "broker ${name} (${broker}) not ready after ${BROKER_TIMEOUT}s"; docker logs --tail 20 "${name}" >&2
             return 1
         fi
-        sleep 1; waited=$((waited + 1))
+        sleep 1
     done
 }
 
@@ -89,7 +91,7 @@ broker_url() { echo "tcp://$1:1883"; }
 # start_role <adapter> <container> <edge|host> [args...]
 start_role() {
     local adapter="$1" name="$2"; shift 2
-    docker rm -f "${name}" >/dev/null 2>&1
+    docker rm -f -v "${name}" >/dev/null 2>&1
     docker run -d --name "${name}" --network "${NETWORK}" --label "$(run_label)" \
         ${DOCKER_ARGS[@]+"${DOCKER_ARGS[@]}"} "$(image_of "${adapter}")" "$@" >/dev/null
 }
@@ -115,7 +117,15 @@ wait_ready() {
 call() {
     local name="$1" op="$2" payload="${3:-}"
     [[ -n "${payload}" ]] || payload='{}'
-    docker exec "${name}" /usr/local/bin/sparkplugb-interop call "${op}" --payload "${payload}" 2>/dev/null
+    local doc rc=0
+    doc=$(docker exec "${name}" /usr/local/bin/sparkplugb-interop call "${op}" --payload "${payload}" 2>/dev/null) || rc=$?
+    printf '%s\n' "${doc}"
+    if [[ -n "${REPORT_DIR:-}" && -n "${doc}" ]]; then
+        mkdir -p "${REPORT_DIR}"
+        # call runs in a command substitution: BASHPID and RANDOM keep names apart.
+        printf '%s\n' "${doc}" > "${REPORT_DIR}/call-${RUN_ID}-${BASHPID}-${RANDOM}-${op}.json"
+    fi
+    return "${rc}"
 }
 
 # events <container> [jq filter]: the JSON events of a role so far.

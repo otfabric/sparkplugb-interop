@@ -13,7 +13,7 @@ do it.
   "adapter": "tahu",
   "adapterVersion": "v0.1.0",
   "protocol": "sparkplug-b-3.0.0",
-  "upstream": {"name": "Eclipse Tahu", "version": "1.0.14", "license": "EPL-2.0", "language": "Java", "independentEngine": true},
+  "upstream": {"name": "Eclipse Tahu", "version": "1.0.21", "license": "EPL-2.0", "language": "Java", "independentEngine": true},
   "roles": {
     "edge": {
       "supported": true,

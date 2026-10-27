@@ -37,31 +37,39 @@ done
 has() { jq -e "$2" <<<"${CAPS[$1]}" >/dev/null 2>&1; }  # has <adapter> <jq predicate>
 
 # ---- known upstream bugs ----
+# tests/known-bugs.tsv: implementation, version, role (edge or host), peer
+# (regex on the adapter of the other role), broker (regex), fixture (regex),
+# step (regex), description. An entry applies when the adapter of that role
+# in the pairing is that implementation at that version and the other
+# columns match.
 declare -A KNOWN_USED
 KNOWN_LINES=()
-while IFS=$'\t' read -r k_adapter k_version k_step k_what; do
-    [[ -z "${k_adapter}" || "${k_adapter}" == \#* ]] && continue
-    KNOWN_LINES+=("${k_adapter}"$'\t'"${k_version}"$'\t'"${k_step}"$'\t'"${k_what}")
+while IFS=$'\t' read -r k_impl k_version k_role k_peer k_broker k_fixture k_step k_what; do
+    [[ -z "${k_impl}" || "${k_impl}" == \#* || "${k_impl}" == implementation ]] && continue
+    case "${k_role}" in edge|host) ;; *) log "tests/known-bugs.tsv: role '${k_role}' is not edge or host"; exit 1 ;; esac
+    [[ -n "${k_what}" ]] || { log "tests/known-bugs.tsv: entry for ${k_impl} has fewer than 8 columns"; exit 1; }
+    KNOWN_LINES+=("${k_impl}"$'\t'"${k_version}"$'\t'"${k_role}"$'\t'"${k_peer}"$'\t'"${k_broker}"$'\t'"${k_fixture}"$'\t'"${k_step}"$'\t'"${k_what}")
 done < "${ROOT}/tests/known-bugs.tsv"
 
-# known_bug <step> <adapter...>: prints the matching entry, if any.
+# known_bug <step>: prints the entry that matches the step of the current
+# pairing (HA, EA, BROKER, FIXTURE), if any.
 known_bug() {
-    local step="$1" line a v s w; shift
+    local step="$1" line impl v role peer br fx s w x y
     for line in ${KNOWN_LINES[@]+"${KNOWN_LINES[@]}"}; do
-        IFS=$'\t' read -r a v s w <<<"${line}"
-        for x in "$@"; do
-            if [[ "${a}" == "${x}" && "${v}" == "${VERSIONS[$x]:-}" ]] && [[ "${step}" =~ ${s} ]]; then
-                printf '%s' "${line}"; return 0
-            fi
-        done
+        IFS=$'\t' read -r impl v role peer br fx s w <<<"${line}"
+        if [[ "${role}" == host ]]; then x="${HA}" y="${EA}"; else x="${EA}" y="${HA}"; fi
+        if [[ "${impl}" == "${x}" && "${v}" == "${VERSIONS[$x]:-}" ]] && [[ "${y}" =~ ^(${peer})$ ]] \
+            && [[ "${BROKER}" =~ ^(${br})$ ]] && [[ "${FIXTURE}" =~ ^(${fx})$ ]] && [[ "${step}" =~ ^(${s})$ ]]; then
+            printf '%s' "${line}"; return 0
+        fi
     done
     return 1
 }
 
-# outcome <passed 0|1> <label> <step> <adapters...>
+# outcome <passed 0|1> <label> <step>
 outcome() {
-    local passed="$1" label="$2" step="$3" entry; shift 3
-    entry=$(known_bug "${step}" "$@")
+    local passed="$1" label="$2" step="$3" entry
+    entry=$(known_bug "${step}")
     if [[ "${passed}" == 0 ]]; then
         [[ -n "${entry}" ]] && KNOWN_USED["${entry}"]+=pass
         ok "${label}"
@@ -117,17 +125,20 @@ EXPECTED=()
 expect() { local l; while IFS= read -r l; do [[ -n "$l" ]] && EXPECTED+=("$l"); done <<<"$1"; }
 
 # compare <label> <step>: waits until the host has as many messages from the
-# edge as expected, then compares them all, normalized.
+# edge as expected, then compares them all, normalized. The comparison is of
+# the messages as a set: each carries its seq, which is what orders Sparkplug
+# messages, and MQTT orders messages per topic only (NanoMQ does deliver
+# messages of different topics out of publishing order).
 compare() {
     local label="$1" step="$2" got want n=${#EXPECTED[@]}
     got=$(wait_events "${H}" ".event == \"message\" and .edgeNode == \"${EDGE_NODE}\"" "${n}" \
-        | jq -c --slurpfile fx "${FIXTURE_FILE}" "\$fx[0] as \$fx | ${NORMALIZE}" | head -n "${n}")
-    want=$(printf '%s\n' "${EXPECTED[@]}" | jq -c 'walk(if type == "number" then . + 0 else . end)')
+        | jq -c --slurpfile fx "${FIXTURE_FILE}" "\$fx[0] as \$fx | ${NORMALIZE}" | head -n "${n}" | LC_ALL=C sort)
+    want=$(printf '%s\n' "${EXPECTED[@]}" | jq -c 'walk(if type == "number" then . + 0 else . end)' | LC_ALL=C sort)
     if [[ "${got}" == "${want}" ]]; then
-        outcome 0 "${PAIR}: ${label}" "${step}" "${HA}" "${EA}"
+        outcome 0 "${PAIR}: ${label}" "${step}"
     else
-        outcome 1 "${PAIR}: ${label}" "${step}" "${HA}" "${EA}"
-        if [[ -n "${VERBOSE:-}" || -z "$(known_bug "${step}" "${HA}" "${EA}")" ]]; then
+        outcome 1 "${PAIR}: ${label}" "${step}"
+        if [[ -n "${VERBOSE:-}" || -z "$(known_bug "${step}")" ]]; then
             diff <(printf '%s\n' "${want}") <(printf '%s\n' "${got}") | head -20 >&2
         fi
         # Continue from what the host actually saw, so one failure is reported once.
@@ -172,16 +183,16 @@ pairing() {  # pairing <host adapter> <edge adapter> <fixture>
     # if the edge waited for its STATE.
     if [[ "${primary}" == true ]]; then start_role "${EA}" "${e}" "${edge_args[@]}"; fi
     start_role "${HA}" "${h}" host --broker "${url}" --host-id "${HOST_ID}"
-    if ! wait_ready "${h}"; then fail "${PAIR}: host ready"; docker rm -f "${b}" "${h}" "${e}" >/dev/null 2>&1; return; fi
+    if ! wait_ready "${h}"; then fail "${PAIR}: host ready"; docker rm -f -v "${b}" "${h}" "${e}" >/dev/null 2>&1; return; fi
     if [[ "${primary}" == false ]]; then start_role "${EA}" "${e}" "${edge_args[@]}"; fi
-    if ! wait_ready "${e}"; then fail "${PAIR}: edge ready"; docker rm -f "${b}" "${h}" "${e}" >/dev/null 2>&1; return; fi
+    if ! wait_ready "${e}"; then fail "${PAIR}: edge ready"; docker rm -f -v "${b}" "${h}" "${e}" >/dev/null 2>&1; return; fi
 
     # 1. Births.
     expect "$(births 0)"
     SEQ=${#EXPECTED[@]}
     compare "births" births
     local bdseq; bdseq=$(bdseq_of NBIRTH)
-    if [[ "${bdseq}" =~ ^[0-9]+$ ]]; then ok "${PAIR}: NBIRTH bdSeq"; else fail "${PAIR}: NBIRTH bdSeq is ${bdseq:-missing}"; fi
+    if [[ "${bdseq}" =~ ^[0-9]+$ ]]; then ok "${PAIR}: NBIRTH bdSeq"; else outcome 1 "${PAIR}: NBIRTH bdSeq is ${bdseq:-missing}" births; fi
 
     local alias_ok=true
     if has "${EA}" '.roles.edge.features.aliases' && ! has "${HA}" '.roles.host.features.aliasResolution'; then alias_ok=false; fi
@@ -228,7 +239,7 @@ pairing() {  # pairing <host adapter> <edge adapter> <fixture>
                         (.devices[] | .id as $d | .metrics[] | select(.writable) | ["device", $d, .name, .datatype, (.value | tojson)]) | @tsv' "${FIXTURE_FILE}")
         if (( applied > 0 )); then
             if wait_events "${E}" '.event == "command" and .applied == true' "${applied}" >/dev/null; then ok "${PAIR}: edge command events"
-            else outcome 1 "${PAIR}: edge reports ${applied} applied command events" write "${HA}" "${EA}"; fi
+            else outcome 1 "${PAIR}: edge reports ${applied} applied command events" write; fi
         fi
     else skip "${PAIR}: writes"; fi
 
@@ -238,7 +249,7 @@ pairing() {  # pairing <host adapter> <edge adapter> <fixture>
         local out; out=$(births 0); expect "${out}"; SEQ=$(grep -c . <<<"${out}")
         compare "rebirth on request" rebirth-command
         if [[ "$(bdseq_of NBIRTH 2)" == "${bdseq}" ]]; then ok "${PAIR}: rebirth keeps bdSeq"
-        else outcome 1 "${PAIR}: rebirth keeps bdSeq ${bdseq} (got $(bdseq_of NBIRTH 2))" rebirth-command "${HA}" "${EA}"; fi
+        else outcome 1 "${PAIR}: rebirth keeps bdSeq ${bdseq} (got $(bdseq_of NBIRTH 2))" rebirth-command; fi
     else skip "${PAIR}: rebirth on request"; fi
 
     # 5. Device death and birth.
@@ -250,7 +261,7 @@ pairing() {  # pairing <host adapter> <edge adapter> <fixture>
         compare "device death" device-death
         if has "${HA}" '.roles.host.calls | index("nodes")'; then
             if host_nodes | jq -e --arg d "${first_dev}" '.online and (.devices[] | select(.device == $d) | .online == false)' >/dev/null 2>&1
-            then ok "${PAIR}: host tracks the dead device"; else outcome 1 "${PAIR}: host tracks the dead device: $(host_nodes)" device-death "${HA}" "${EA}"; fi
+            then ok "${PAIR}: host tracks the dead device"; else outcome 1 "${PAIR}: host tracks the dead device: $(host_nodes)" device-death; fi
         fi
         call "${E}" device-birth "{\"device\": \"${first_dev}\"}" >/dev/null
         expect "$(jq -c --arg d "${first_dev}" --argjson s "${SEQ}" '.devices[] | select(.id == $d) |
@@ -269,7 +280,7 @@ pairing() {  # pairing <host adapter> <edge adapter> <fixture>
     # 7. What the host tracks.
     if has "${HA}" '.roles.host.calls | index("nodes")'; then
         if host_nodes | jq -e --argjson b "${bdseq:-null}" '.online == true and .bdSeq == $b and ([.devices[].online] | all)' >/dev/null 2>&1
-        then ok "${PAIR}: host tracks the node online"; else outcome 1 "${PAIR}: host tracks the node online: $(host_nodes)" nodes "${HA}" "${EA}"; fi
+        then ok "${PAIR}: host tracks the node online"; else outcome 1 "${PAIR}: host tracks the node online: $(host_nodes)" nodes; fi
     fi
 
     # 8. Stop: NDEATH with the bdSeq of the birth, published by the edge on a
@@ -278,14 +289,22 @@ pairing() {  # pairing <host adapter> <edge adapter> <fixture>
     if has "${EA}" '.roles.edge.features.gracefulDeath'; then how=clean; step=graceful-death; docker stop -t 10 "${E}" >/dev/null
     else docker kill "${E}" >/dev/null; fi
     expect '{"type":"NDEATH","device":null,"seq":null,"metrics":[]}'
+    if [[ "${how}" == clean ]]; then
+        # An edge node may publish a DDEATH for each device before its NDEATH
+        # (Tahu does); Sparkplug allows it, so they are expected too.
+        local mine=".event == \"message\" and .edgeNode == \"${EDGE_NODE}\""
+        wait_events "${H}" "${mine} and .type == \"NDEATH\"" 1 >/dev/null || true
+        expect "$(events "${H}" "select(${mine})" | tail -n "+${#EXPECTED[@]}" \
+            | jq -c --slurpfile fx "${FIXTURE_FILE}" "\$fx[0] as \$fx | ${NORMALIZE} | select(.type == \"DDEATH\")")"
+    fi
     compare "NDEATH on a ${how} stop" "${step}"
     if [[ "$(bdseq_of NDEATH)" == "${bdseq}" ]]; then ok "${PAIR}: NDEATH bdSeq matches NBIRTH"
-    else outcome 1 "${PAIR}: NDEATH bdSeq $(bdseq_of NDEATH), NBIRTH ${bdseq}" "${step}" "${HA}" "${EA}"; fi
+    else outcome 1 "${PAIR}: NDEATH bdSeq $(bdseq_of NDEATH), NBIRTH ${bdseq}" "${step}"; fi
     if has "${HA}" '.roles.host.calls | index("nodes")'; then
         if host_nodes | jq -e '.online == false' >/dev/null 2>&1; then ok "${PAIR}: host tracks the node offline"
-        else outcome 1 "${PAIR}: host tracks the node offline: $(host_nodes)" "${step}" "${HA}" "${EA}"; fi
+        else outcome 1 "${PAIR}: host tracks the node offline: $(host_nodes)" "${step}"; fi
     fi
-    docker rm -f "${E}" >/dev/null 2>&1
+    docker rm -f -v "${E}" >/dev/null 2>&1
 
     # 9. Crash: the broker delivers the will, an NDEATH with the new bdSeq.
     STATE=$(jq -c . "${FIXTURE_FILE}"); OFFLINE='[]'
@@ -299,9 +318,9 @@ pairing() {  # pairing <host adapter> <edge adapter> <fixture>
         compare "NDEATH will after a crash" will
         local b2 d2; b2=$(bdseq_of NBIRTH $((births_before + 1))); d2=$(bdseq_of NDEATH "$(events "${H}" "select(.event == \"message\" and .edgeNode == \"${EDGE_NODE}\" and .type == \"NDEATH\")" | wc -l)")
         if [[ -n "${b2}" && "${b2}" == "${d2}" ]]; then ok "${PAIR}: will bdSeq matches NBIRTH"
-        else outcome 1 "${PAIR}: will bdSeq ${d2:-missing}, NBIRTH ${b2:-missing}" will "${HA}" "${EA}"; fi
+        else outcome 1 "${PAIR}: will bdSeq ${d2:-missing}, NBIRTH ${b2:-missing}" will; fi
     else fail "${PAIR}: edge restart"; fi
-    docker rm -f "${E}" >/dev/null 2>&1
+    docker rm -f -v "${E}" >/dev/null 2>&1
 
     # 10. The primary host goes offline: the edge sees it and dies.
     if [[ "${primary}" == true ]] && has "${HA}" '.roles.host.features.gracefulOffline'; then
@@ -311,7 +330,7 @@ pairing() {  # pairing <host adapter> <edge adapter> <fixture>
             if wait_events "${E}" '.event == "primary-host" and .online == false' 1 >/dev/null \
                 && wait_events "${E}" '.event == "published" and .type == "NDEATH"' 1 >/dev/null
             then ok "${PAIR}: edge dies when the primary host goes offline"
-            else outcome 1 "${PAIR}: edge dies when the primary host goes offline" primary-host-offline "${HA}" "${EA}"; fi
+            else outcome 1 "${PAIR}: edge dies when the primary host goes offline" primary-host-offline; fi
         else fail "${PAIR}: edge start for the STATE test"; fi
     else skip "${PAIR}: primary host offline"; fi
 
@@ -322,7 +341,7 @@ pairing() {  # pairing <host adapter> <edge adapter> <fixture>
             > "${REPORT_DIR}/interop-${BROKER}-${HA}-${EA}-${FIXTURE}.jsonl"
         docker logs "${H}" > "${REPORT_DIR}/interop-${BROKER}-${HA}-${EA}-${FIXTURE}.host.jsonl" 2>/dev/null
     fi
-    docker rm -f "${b}" "${h}" "${e}" >/dev/null 2>&1
+    docker rm -f -v "${b}" "${h}" "${e}" >/dev/null 2>&1
 }
 
 PAIRS=0
@@ -341,9 +360,10 @@ for HA in "${ADAPTERS[@]}"; do
 done
 (( PAIRS > 0 )) || { log "no pairing: the adapters need at least one host and one edge"; FAIL=$((FAIL + 1)); }
 
-# A known bug that did not fail in a pairing that ran it is stale.
+# A known bug that did not fail in a pairing that ran it is stale, unless it
+# is intermittent (its description starts with "Intermittent:").
 for entry in "${!KNOWN_USED[@]}"; do
-    if [[ "${KNOWN_USED[$entry]}" != *fail* ]]; then
+    if [[ "${KNOWN_USED[$entry]}" != *fail* && "${entry##*$'\t'}" != Intermittent:* ]]; then
         fail "stale entry in tests/known-bugs.tsv (every matching step passed): ${entry}"
     fi
 done
