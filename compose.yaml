@@ -35,10 +35,10 @@ services:
     ports:
       - "127.0.0.1:1884:1883/tcp"
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8080/ || exit 1"]
+      test: ["CMD-SHELL", "echo > /dev/tcp/localhost/1883"]
       interval: 5s
       timeout: 5s
-      retries: 15
+      retries: 20
       start_period: 15s
 
   emqx:
@@ -63,10 +63,10 @@ services:
     ports:
       - "127.0.0.1:1886:1883/tcp"
     healthcheck:
-      test: ["CMD-SHELL", "nanomq_cli conn --url mqtt-tcp://127.0.0.1:1883 -V 4 2>/dev/null && exit 0 || exit 1"]
-      interval: 3s
-      timeout: 3s
-      retries: 10
+      test: ["CMD-SHELL", "nanomq_cli pub -t healthcheck -m ok -u 127.0.0.1 -p 1883 2>/dev/null || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
       start_period: 5s
 
 networks:
