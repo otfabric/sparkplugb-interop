@@ -1,0 +1,145 @@
+name: Check Versions
+
+on:
+  schedule:
+    - cron: "0 8 * * 1" # Monday 08:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read pinned versions
+        id: pinned
+        run: |
+          # Parse versions.yaml with grep/awk (no yq dependency)
+          echo "mosquitto=$(grep 'mosquitto:' versions.yaml | awk '{print $2}' | tr -d '\"')" >> "$GITHUB_OUTPUT"
+          echo "hivemq_ce=$(grep 'hivemq-ce:' versions.yaml | awk '{print $2}' | tr -d '\"')" >> "$GITHUB_OUTPUT"
+          echo "emqx=$(grep 'emqx:' versions.yaml | head -1 | awk '{print $2}' | tr -d '\"')" >> "$GITHUB_OUTPUT"
+          echo "nanomq=$(grep 'nanomq:' versions.yaml | awk '{print $2}' | tr -d '\"')" >> "$GITHUB_OUTPUT"
+
+      - name: Check for newer broker versions
+        id: brokers
+        run: |
+          updates=""
+
+          # Mosquitto — Docker Hub
+          latest=$(curl -fsSL "https://hub.docker.com/v2/repositories/library/eclipse-mosquitto/tags/?page_size=10&ordering=last_updated" \
+            | jq -r '[.results[].name | select(test("^[0-9]+\\.[0-9]+\\.[0-9]+$"))] | sort_by(split(".") | map(tonumber)) | last')
+          pinned="${{ steps.pinned.outputs.mosquitto }}"
+          if [ -n "${latest}" ] && [ "${latest}" != "${pinned}" ]; then
+            updates="${updates}- **Mosquitto**: ${pinned} → ${latest}\n"
+          fi
+
+          # HiveMQ CE — Docker Hub
+          latest=$(curl -fsSL "https://hub.docker.com/v2/repositories/hivemq/hivemq-ce/tags/?page_size=10&ordering=last_updated" \
+            | jq -r '[.results[].name | select(test("^[0-9]"))] | sort | last')
+          pinned="${{ steps.pinned.outputs.hivemq_ce }}"
+          if [ -n "${latest}" ] && [ "${latest}" != "${pinned}" ]; then
+            updates="${updates}- **HiveMQ CE**: ${pinned} → ${latest}\n"
+          fi
+
+          # EMQX — Docker Hub
+          latest=$(curl -fsSL "https://hub.docker.com/v2/repositories/emqx/emqx/tags/?page_size=10&ordering=last_updated" \
+            | jq -r '[.results[].name | select(test("^[0-9]+\\.[0-9]+\\.[0-9]+$"))] | sort_by(split(".") | map(tonumber)) | last')
+          pinned="${{ steps.pinned.outputs.emqx }}"
+          if [ -n "${latest}" ] && [ "${latest}" != "${pinned}" ]; then
+            updates="${updates}- **EMQX**: ${pinned} → ${latest}\n"
+          fi
+
+          # NanoMQ — Docker Hub
+          latest=$(curl -fsSL "https://hub.docker.com/v2/repositories/emqx/nanomq/tags/?page_size=10&ordering=last_updated" \
+            | jq -r '[.results[].name | select(test("^[0-9]+\\.[0-9]+$"))] | sort | last')
+          pinned="${{ steps.pinned.outputs.nanomq }}"
+          if [ -n "${latest}" ] && [ "${latest}" != "${pinned}" ]; then
+            updates="${updates}- **NanoMQ**: ${pinned} → ${latest}\n"
+          fi
+
+          if [ -n "${updates}" ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            # Multiline output
+            {
+              echo "details<<EOF"
+              echo -e "${updates}"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check for newer adapter versions
+        id: adapters
+        run: |
+          updates=""
+
+          check_github_release() {
+            local repo="$1" name="$2"
+            latest=$(curl -fsSL "https://api.github.com/repos/${repo}/releases/latest" 2>/dev/null \
+              | jq -r '.tag_name // empty')
+            if [ -n "${latest}" ]; then
+              echo "  ${name}: latest release ${latest}"
+              updates="${updates}- **${name}** (${repo}): latest release \`${latest}\`\n"
+            fi
+          }
+
+          check_github_release "eclipse/tahu" "Eclipse Tahu"
+          check_github_release "SeppPenner/SparkplugNet" "SparkplugNet"
+          check_github_release "hivemq/hivemq-mqtt-client-dotnet" "HiveMQtt.Sparkplug"
+          check_github_release "matteosox/pysparkplug" "PySparkplug"
+          check_github_release "EvergenEnergy/nautilus" "Nautilus"
+          check_github_release "EvergenEnergy/sparkplughost" "Evergen Sparkplug Host"
+
+          if [ -n "${updates}" ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "details<<EOF"
+              echo -e "${updates}"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open issue if updates found
+        if: steps.brokers.outputs.found == 'true' || steps.adapters.outputs.found == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'version-update',
+            });
+            if (existing.data.length > 0) {
+              console.log('Issue already open, skipping.');
+              return;
+            }
+
+            let body = 'The weekly version check found newer releases.\n\n';
+
+            const brokerDetails = `${{ steps.brokers.outputs.details }}`;
+            if (brokerDetails.trim()) {
+              body += '## MQTT Brokers\n\n' + brokerDetails + '\n';
+            }
+
+            const adapterDetails = `${{ steps.adapters.outputs.details }}`;
+            if (adapterDetails.trim()) {
+              body += '## Interop Adapters\n\n' + adapterDetails + '\n';
+            }
+
+            body += '\nUpdate `versions.yaml`, `compose.yaml` and adapter Dockerfiles as needed.';
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: 'Newer broker/adapter versions available',
+              body: body,
+              labels: ['version-update'],
+            });

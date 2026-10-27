@@ -54,7 +54,14 @@ sparkplugb-interop
 ├── cmd/wait-brokers/     Broker readiness CLI
 ├── fixtures/             Reference payloads and scenario definitions
 ├── adapters/             Independent Sparkplug implementations
-│   └── tahu/             Eclipse Tahu (Java reference)
+│   ├── tahu/             Eclipse Tahu — Java (Edge + Host)
+│   ├── sparkplugnet/     SparkplugNet — C# (Edge + Host)
+│   ├── hivemqtt-sparkplug/ HiveMQtt.Sparkplug — C# (Edge + Host)
+│   ├── node-red-sparkplug/ Node-RED Sparkplug Plus — JS (Edge + Sub)
+│   ├── srad/             srad — Rust (Edge + Application)
+│   ├── pysparkplug/      PySparkplug — Python (Edge + Sub)
+│   ├── nautilus/         Nautilus — Go (Edge + Host)
+│   └── evergen-host/     Evergen Sparkplug Host — Go (Host)
 ├── compose.yaml          Docker Compose orchestration
 ├── versions.yaml         Pinned broker and adapter versions
 └── Makefile              Build and test targets
@@ -122,9 +129,16 @@ docker compose down
 Each adapter wraps an independent Sparkplug B implementation in a container
 with a standardised interface. Adapters never import `go-sparkplugb`.
 
-| Adapter      | Language | Roles       | Source                                              |
-|-------------|----------|-------------|------------------------------------------------------|
-| Eclipse Tahu | Java     | Edge + Host | [eclipse/tahu](https://github.com/eclipse/tahu)     |
+| Adapter                 | Language   | Roles                    | Status  | Source |
+|-------------------------|------------|--------------------------|---------|--------|
+| Eclipse Tahu            | Java       | Edge + Host              | Planned | [eclipse/tahu](https://github.com/eclipse/tahu) |
+| SparkplugNet            | C#         | Edge + Host              | Planned | [SeppPenner/SparkplugNet](https://github.com/SeppPenner/SparkplugNet) |
+| HiveMQtt.Sparkplug      | C#         | Edge + Host              | Planned | [hivemq/hivemq-mqtt-client-dotnet](https://github.com/hivemq/hivemq-mqtt-client-dotnet) |
+| Node-RED Sparkplug Plus | JavaScript | Edge + Decoding/Sub      | Planned | [node-red-contrib-sparkplug-plus](https://flows.nodered.org/node/node-red-contrib-sparkplug-plus) |
+| srad                    | Rust       | Edge + Application       | Planned | [srad](https://crates.io/crates/srad) |
+| PySparkplug             | Python     | Edge + Subscriber/Client | Planned | [matteosox/pysparkplug](https://github.com/matteosox/pysparkplug) |
+| Nautilus                | Go         | Edge + Host              | Planned | [EvergenEnergy/nautilus](https://github.com/EvergenEnergy/nautilus) |
+| Evergen Sparkplug Host  | Go         | Host                     | Planned | [EvergenEnergy/sparkplughost](https://github.com/EvergenEnergy/sparkplughost) |
 
 ## Fixtures
 

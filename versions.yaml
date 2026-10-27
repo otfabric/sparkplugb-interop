@@ -1,5 +1,5 @@
 # Pinned versions for all interoperability infrastructure.
-# Update these to test against newer releases.
+# The check-versions workflow opens an issue when newer releases appear.
 
 brokers:
   mosquitto: "2.0.21"
@@ -9,6 +9,34 @@ brokers:
 
 adapters:
   tahu:
-    repo: "https://github.com/eclipse/tahu"
-    commit: "5736e404889d4b95910613040a99ba79589ffb13"
+    repo: "eclipse/tahu"
+    version: "v1.0.9"
     license: "EPL-2.0"
+  sparkplugnet:
+    repo: "SeppPenner/SparkplugNet"
+    version: "1.0.6"
+    license: "MIT"
+  hivemqtt-sparkplug:
+    repo: "hivemq/hivemq-mqtt-client-dotnet"
+    version: "0.19.0"
+    license: "Apache-2.0"
+  node-red-sparkplug:
+    package: "node-red-contrib-sparkplug-plus"
+    version: "1.1.0"
+    license: "MIT"
+  srad:
+    crate: "srad"
+    version: "0.5.0"
+    license: "MIT"
+  pysparkplug:
+    repo: "matteosox/pysparkplug"
+    version: "0.2.1"
+    license: "MIT"
+  nautilus:
+    repo: "EvergenEnergy/nautilus"
+    version: "v0.5.0"
+    license: "Apache-2.0"
+  evergen-host:
+    repo: "EvergenEnergy/sparkplughost"
+    version: "v0.7.0"
+    license: "Apache-2.0"
