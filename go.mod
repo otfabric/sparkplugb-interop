@@ -2,7 +2,7 @@ module github.com/otfabric/sparkplugb-interop
 
 go 1.27.3
 
-require github.com/otfabric/go-sparkplugb v0.0.0-20261027021148-7738a6f3f747
+require github.com/otfabric/go-sparkplugb v0.0.0-20261027024523-31b541b0bf71
 
 require (
 	github.com/eclipse/paho.mqtt.golang v1.5.1 // indirect
