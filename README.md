@@ -31,7 +31,7 @@ make e2e
 | Broker         | Version   | MQTT 3.1.1 | MQTT 5.0 | Port | Image                                      |
 |----------------|-----------|:----------:|:--------:|------|---------------------------------------------|
 | Mosquitto      | 2.0.21    | ✓          | ✓        | 1883 | `eclipse-mosquitto:2.0.21`                  |
-| HiveMQ CE      | 2024.12   | ✓          | ✓        | 1884 | `hivemq/hivemq-ce:2024.12`                  |
+| HiveMQ CE      | 2024.12   | ✓          | ✓        | 1884 | `hivemq/hivemq-ce:2024.5`                  |
 | EMQX           | 5.8.6     | ✓          | ✓        | 1885 | `emqx/emqx:5.8.6`                          |
 | NanoMQ         | 0.21      | ✓          | ✓        | 1886 | `emqx/nanomq:0.21`                         |
 

@@ -29,7 +29,7 @@ services:
 
   hivemq-ce:
     <<: *broker
-    image: hivemq/hivemq-ce:2024.12
+    image: hivemq/hivemq-ce:2024.5
     volumes:
       - ./brokers/hivemq-ce/config.xml:/opt/hivemq/conf/config.xml:ro
     ports:
