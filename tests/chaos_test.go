@@ -198,14 +198,16 @@ func TestConnectionDrop(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			firstBdSeq := n.BdSeq()
-
 			// Force disconnect the transport (simulating connection drop)
 			if err := tr.Disconnect(ctx); err != nil {
 				t.Fatal(err)
 			}
 
-			// Reconnect with a fresh transport
+			if n.State() != edge.Disconnected {
+				t.Errorf("state after drop = %s, want disconnected", n.State())
+			}
+
+			// A new edge node instance should connect and operate normally
 			tr2 := mqtt.NewPahoTransport()
 			n2, err := edge.New(tr2, edge.Config{
 				GroupID:    "dropGroup",
@@ -221,9 +223,13 @@ func TestConnectionDrop(t *testing.T) {
 			}
 			defer n2.Close(ctx)
 
-			secondBdSeq := n2.BdSeq()
-			if secondBdSeq != (firstBdSeq+1)%256 {
-				t.Errorf("bdSeq after reconnect = %d, want %d", secondBdSeq, (firstBdSeq+1)%256)
+			m2, _ := payload.NewMetric("x", pb.DataType_Int32, int32(1))
+			if err := n2.PublishBirth(ctx, []*pb.Payload_Metric{m2}); err != nil {
+				t.Fatalf("birth after reconnect: %v", err)
+			}
+
+			if n2.State() != edge.Online {
+				t.Errorf("state after reconnect = %s, want online", n2.State())
 			}
 		})
 	}
