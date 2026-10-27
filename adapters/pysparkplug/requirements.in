@@ -1,0 +1,6 @@
+# pysparkplug and its runtime dependencies, and the backend that builds
+# paho-mqtt 1.6.1 (published as an sdist only). Locked with hashes by:
+# make lock-pysparkplug
+pysparkplug==0.6.1
+setuptools
+wheel

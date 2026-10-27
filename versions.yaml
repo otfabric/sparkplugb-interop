@@ -1,42 +1,113 @@
-# Pinned versions for all interoperability infrastructure.
-# The check-versions workflow opens an issue when newer releases appear.
+# Machine-readable version manifest for sparkplugb-interop.
+# Upstream pins and image digests are release inputs; nothing floats.
+# The Dockerfiles and adapter build files are the source of truth for a build:
+# scripts/check-versions.sh fails when this file disagrees with them.
 
+interop_version: "0.1.0"
+contract_version: "0.1"        # docs/CONTAINER_CONTRACT.md (draft until 1.0); documents carry schemaVersion "1.0"
+fixture_schema: "1.0"          # fixtures/schema/sparkplugb-fixture.schema.json
+
+protocol:
+  name: "Sparkplug B"
+  version: "3.0.0"
+  transport: "MQTT 3.1.1"
+
+# The MQTT brokers the self-tests run on, pinned by multi-arch index digest.
+# They are not part of any adapter image; consumers pin the same references.
+# scripts/lib.sh reads the "image:" lines.
 brokers:
-  mosquitto: "2.0.21"
-  hivemq-ce: "2024.5"
-  emqx: "5.8.6"
-  nanomq: "0.21"
+  mosquitto:
+    upstream: "Eclipse Mosquitto"
+    version: "2.1.2"
+    image: "eclipse-mosquitto:2.1.2-alpine@sha256:860aeb5d63ce509508f6dcfb2bc8a1c1dd2bc60555b562b45ce90e52d8dabb0f"
+    license: "EPL-2.0 OR BSD-3-Clause"
+    note: "Run with its bundled /mosquitto-no-auth.conf (anonymous, all interfaces). Its mosquitto_pub is the readiness probe of every broker."
+  hivemq-ce:
+    upstream: "HiveMQ Community Edition"
+    version: "2026.5"
+    image: "hivemq/hivemq-ce:2026.5@sha256:bac6d4d1d815bffe4bc9a7fca8d06ea12b32d34f84ef2f1851ff4548560ee67b"
+    license: "Apache-2.0"
+  emqx:
+    upstream: "EMQX"
+    version: "6.3.2"
+    image: "emqx/emqx:6.3.2@sha256:135116400e11b25224350b2e55c874f4e224d357b593fb554ca1b1f398c631ac"
+    license: "BSL-1.1"
+    note: "Only run by the tests, never redistributed."
+  nanomq:
+    upstream: "NanoMQ"
+    version: "0.25.7"
+    image: "emqx/nanomq:0.25.7@sha256:ed5a9bb892f58e59aa4e47a9932fb7e056f5ae57ba201414c793b8c961587784"
+    license: "MIT"
 
-adapters:
+implementations:
   tahu:
-    repo: "eclipse/tahu"
-    version: "v1.0.9"
+    priority: P0
+    status: planned
+    upstream: "Eclipse Tahu (Java)"
+    repository: "https://github.com/eclipse-tahu/tahu"
+    artifact: "org.eclipse.tahu:tahu-edge, org.eclipse.tahu:tahu-host"
+    version: "1.0.21"
     license: "EPL-2.0"
-  sparkplugnet:
-    repo: "SeppPenner/SparkplugNet"
-    version: "1.0.6"
-    license: "MIT"
-  hivemqtt-sparkplug:
-    repo: "hivemq/hivemq-mqtt-client-dotnet"
-    version: "0.19.0"
-    license: "Apache-2.0"
-  node-red-sparkplug:
-    package: "node-red-contrib-sparkplug-plus"
-    version: "1.1.0"
-    license: "MIT"
-  srad:
-    crate: "srad"
-    version: "0.5.0"
-    license: "MIT"
+    language: "Java"
+    independent_engine: true
+    roles: [edge, host]
+
   pysparkplug:
-    repo: "matteosox/pysparkplug"
-    version: "0.2.1"
+    priority: P1
+    status: planned
+    upstream: "pysparkplug"
+    repository: "https://github.com/matteosox/pysparkplug"
+    artifact: "pysparkplug (PyPI)"
+    version: "0.6.1"
+    license: "Apache-2.0"
+    language: "Python"
+    independent_engine: true
+    roles: [edge, host]
+
+  sparkplugnet:
+    priority: P1
+    status: planned
+    upstream: "SparkplugNet"
+    repository: "https://github.com/SeppPenner/SparkplugNet"
+    artifact: "SparkplugNet (NuGet)"
+    version: "1.4.1"
     license: "MIT"
-  nautilus:
-    repo: "EvergenEnergy/nautilus"
-    version: "v0.5.0"
+    language: "C#"
+    independent_engine: true
+    roles: [edge, host]
+
+  srad:
+    priority: P1
+    status: planned
+    upstream: "srad"
+    repository: "https://github.com/dpazj/srad"
+    artifact: "srad (crates.io)"
+    version: "0.5.0"
+    license: "MIT OR Apache-2.0"
+    language: "Rust"
+    independent_engine: true
+    roles: [edge, host]
+
+  tahu-js:
+    priority: P1
+    status: planned
+    upstream: "Eclipse Tahu sparkplug-client (JavaScript)"
+    repository: "https://github.com/eclipse-tahu/tahu"
+    artifact: "sparkplug-client (npm)"
+    version: "3.2.4"
+    license: "EPL-2.0"
+    language: "JavaScript"
+    independent_engine: true
+    roles: [edge]
+
+  sparkplughost:
+    priority: P2
+    status: planned
+    upstream: "Evergen sparkplughost"
+    repository: "https://github.com/EvergenEnergy/sparkplughost"
+    artifact: "github.com/EvergenEnergy/sparkplughost (Go module)"
+    version: "v0.4.0"
     license: "Apache-2.0"
-  evergen-host:
-    repo: "EvergenEnergy/sparkplughost"
-    version: "v0.7.0"
-    license: "Apache-2.0"
+    language: "Go"
+    independent_engine: true
+    roles: [host]

@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "1.0",
+  "name": "scalars",
+  "description": "One edge node without devices with one metric of every scalar Sparkplug datatype, and one update that changes each of them.",
+  "group": "interop",
+  "edgeNode": "scalars1",
+  "node": {
+    "metrics": [
+      {"name": "Scalars/Int8", "alias": 1, "datatype": "Int8", "value": -8},
+      {"name": "Scalars/Int16", "alias": 2, "datatype": "Int16", "value": -1600},
+      {"name": "Scalars/Int32", "alias": 3, "datatype": "Int32", "value": -320000},
+      {"name": "Scalars/Int64", "alias": 4, "datatype": "Int64", "value": -6400000000},
+      {"name": "Scalars/UInt8", "alias": 5, "datatype": "UInt8", "value": 200},
+      {"name": "Scalars/UInt16", "alias": 6, "datatype": "UInt16", "value": 60000},
+      {"name": "Scalars/UInt32", "alias": 7, "datatype": "UInt32", "value": 4000000000},
+      {"name": "Scalars/UInt64", "alias": 8, "datatype": "UInt64", "value": 9000000000000},
+      {"name": "Scalars/Float", "alias": 9, "datatype": "Float", "value": 3.25},
+      {"name": "Scalars/Double", "alias": 10, "datatype": "Double", "value": 6.125},
+      {"name": "Scalars/Boolean", "alias": 11, "datatype": "Boolean", "value": true},
+      {"name": "Scalars/String", "alias": 12, "datatype": "String", "value": "sparkplug"},
+      {"name": "Scalars/DateTime", "alias": 13, "datatype": "DateTime", "value": 1767225600000},
+      {"name": "Scalars/Text", "alias": 14, "datatype": "Text", "value": "text value"}
+    ]
+  },
+  "devices": [],
+  "updates": [
+    {
+      "node": [
+        {"name": "Scalars/Int8", "value": 127},
+        {"name": "Scalars/Int16", "value": 32767},
+        {"name": "Scalars/Int32", "value": 2147483647},
+        {"name": "Scalars/Int64", "value": 9007199254740991},
+        {"name": "Scalars/UInt8", "value": 255},
+        {"name": "Scalars/UInt16", "value": 65535},
+        {"name": "Scalars/UInt32", "value": 4294967295},
+        {"name": "Scalars/UInt64", "value": 9007199254740991},
+        {"name": "Scalars/Float", "value": -0.5},
+        {"name": "Scalars/Double", "value": -1024.0625},
+        {"name": "Scalars/Boolean", "value": false},
+        {"name": "Scalars/String", "value": ""},
+        {"name": "Scalars/DateTime", "value": 0},
+        {"name": "Scalars/Text", "value": "änd ünïcödé"}
+      ],
+      "devices": {}
+    }
+  ]
+}

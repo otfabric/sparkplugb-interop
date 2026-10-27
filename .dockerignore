@@ -1,0 +1,5 @@
+.git
+reports
+**/__pycache__
+**/target
+**/node_modules

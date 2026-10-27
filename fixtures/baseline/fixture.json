@@ -1,0 +1,51 @@
+{
+  "schemaVersion": "1.0",
+  "name": "baseline",
+  "description": "One edge node with two devices: node and device metrics with aliases, writable metrics on the node and on a device, and two data updates.",
+  "group": "interop",
+  "edgeNode": "edge1",
+  "node": {
+    "metrics": [
+      {"name": "Properties/Hardware", "alias": 1, "datatype": "String", "value": "interop-edge"},
+      {"name": "Inputs/Counter", "alias": 2, "datatype": "Int64", "value": 0},
+      {"name": "Inputs/Temperature", "alias": 3, "datatype": "Double", "value": 21.5},
+      {"name": "Outputs/Enabled", "alias": 4, "datatype": "Boolean", "value": false, "writable": true},
+      {"name": "Outputs/Setpoint", "alias": 5, "datatype": "Int32", "value": 50, "writable": true}
+    ]
+  },
+  "devices": [
+    {
+      "id": "pump1",
+      "metrics": [
+        {"name": "Status/Running", "alias": 10, "datatype": "Boolean", "value": true},
+        {"name": "Status/Speed", "alias": 11, "datatype": "Float", "value": 1450.5},
+        {"name": "Control/SpeedSetpoint", "alias": 12, "datatype": "Float", "value": 1500, "writable": true}
+      ]
+    },
+    {
+      "id": "meter1",
+      "metrics": [
+        {"name": "Energy/Import", "alias": 20, "datatype": "Int64", "value": 1000},
+        {"name": "Info/Serial", "alias": 21, "datatype": "String", "value": "M-0001"}
+      ]
+    }
+  ],
+  "updates": [
+    {
+      "node": [
+        {"name": "Inputs/Counter", "value": 1},
+        {"name": "Inputs/Temperature", "value": 22.25}
+      ],
+      "devices": {
+        "pump1": [{"name": "Status/Speed", "value": 1475.25}],
+        "meter1": [{"name": "Energy/Import", "value": 1001}]
+      }
+    },
+    {
+      "node": [{"name": "Inputs/Counter", "value": 2}],
+      "devices": {
+        "pump1": [{"name": "Status/Running", "value": false}]
+      }
+    }
+  ]
+}

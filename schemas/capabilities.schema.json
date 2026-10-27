@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/otfabric/sparkplugb-interop/schemas/capabilities.schema.json",
+  "title": "sparkplugb-interop capability document",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "adapter", "adapterVersion", "protocol", "upstream", "roles"],
+  "properties": {
+    "schemaVersion": {"const": "1.0"},
+    "adapter": {"type": "string", "pattern": "^[a-z0-9-]+$"},
+    "adapterVersion": {"type": "string"},
+    "protocol": {"const": "sparkplug-b-3.0.0"},
+    "upstream": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "license", "language", "independentEngine"],
+      "properties": {
+        "name": {"type": "string"},
+        "version": {"type": "string"},
+        "license": {"type": "string"},
+        "language": {"type": "string"},
+        "independentEngine": {"type": "boolean"}
+      }
+    },
+    "roles": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["edge", "host"],
+      "properties": {
+        "edge": {"$ref": "#/$defs/edge"},
+        "host": {"$ref": "#/$defs/host"}
+      }
+    }
+  },
+  "$defs": {
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["supported"],
+      "properties": {
+        "supported": {"type": "boolean"},
+        "fixtures": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "calls": {"type": "array", "items": {"enum": ["publish-data", "rebirth", "device-death", "device-birth"]}, "uniqueItems": true},
+        "features": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "aliases": {"type": "boolean"},
+            "rebirthCommand": {"type": "boolean"},
+            "writes": {"type": "boolean"},
+            "primaryHost": {"type": "boolean"},
+            "gracefulDeath": {"type": "boolean"}
+          }
+        }
+      },
+      "if": {"properties": {"supported": {"const": true}}},
+      "then": {"required": ["fixtures", "calls", "features"]}
+    },
+    "host": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["supported"],
+      "properties": {
+        "supported": {"type": "boolean"},
+        "datatypes": {
+          "type": "array",
+          "items": {"enum": ["Int8", "Int16", "Int32", "Int64", "UInt8", "UInt16", "UInt32", "UInt64", "Float", "Double", "Boolean", "String", "DateTime", "Text"]},
+          "uniqueItems": true
+        },
+        "calls": {"type": "array", "items": {"enum": ["send-command", "request-rebirth", "nodes"]}, "uniqueItems": true},
+        "features": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "aliasResolution": {"type": "boolean"},
+            "seqCheck": {"type": "boolean"},
+            "gracefulOffline": {"type": "boolean"}
+          }
+        }
+      },
+      "if": {"properties": {"supported": {"const": true}}},
+      "then": {"required": ["datatypes", "calls", "features"]}
+    }
+  }
+}

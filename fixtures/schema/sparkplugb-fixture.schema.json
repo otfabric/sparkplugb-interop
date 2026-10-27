@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/otfabric/sparkplugb-interop/fixtures/schema/sparkplugb-fixture.schema.json",
+  "title": "sparkplugb-interop fixture",
+  "description": "An edge node, its devices and metrics, and the data updates it publishes on request. docs/FIXTURES.md has the rules this schema cannot express; scripts/validate-fixtures.py checks them.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "name", "description", "group", "edgeNode", "node", "devices", "updates"],
+  "properties": {
+    "schemaVersion": {"const": "1.0"},
+    "name": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
+    "description": {"type": "string", "minLength": 1},
+    "group": {"$ref": "#/$defs/id"},
+    "edgeNode": {"$ref": "#/$defs/id"},
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["metrics"],
+      "properties": {
+        "metrics": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/metric"}}
+      }
+    },
+    "devices": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "metrics"],
+        "properties": {
+          "id": {"$ref": "#/$defs/id"},
+          "metrics": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/metric"}}
+        }
+      }
+    },
+    "updates": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["node", "devices"],
+        "properties": {
+          "node": {"type": "array", "items": {"$ref": "#/$defs/change"}},
+          "devices": {
+            "type": "object",
+            "propertyNames": {"$ref": "#/$defs/id"},
+            "additionalProperties": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/change"}}
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "id": {"type": "string", "minLength": 1, "pattern": "^[^/+#]+$"},
+    "datatype": {
+      "enum": ["Int8", "Int16", "Int32", "Int64", "UInt8", "UInt16", "UInt32", "UInt64", "Float", "Double", "Boolean", "String", "DateTime", "Text"]
+    },
+    "value": {"type": ["number", "boolean", "string"]},
+    "metric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "alias", "datatype", "value"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "alias": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+        "datatype": {"$ref": "#/$defs/datatype"},
+        "value": {"$ref": "#/$defs/value"},
+        "writable": {"type": "boolean"}
+      }
+    },
+    "change": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "value"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "value": {"$ref": "#/$defs/value"}
+      }
+    }
+  }
+}
