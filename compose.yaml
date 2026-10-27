@@ -35,7 +35,7 @@ services:
     ports:
       - "127.0.0.1:1884:1883/tcp"
     healthcheck:
-      test: ["CMD-SHELL", "echo > /dev/tcp/localhost/1883"]
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/1883'"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -63,7 +63,7 @@ services:
     ports:
       - "127.0.0.1:1886:1883/tcp"
     healthcheck:
-      test: ["CMD-SHELL", "nanomq_cli pub -t healthcheck -m ok -u 127.0.0.1 -p 1883 2>/dev/null || exit 1"]
+      test: ["CMD-SHELL", "nanomq_cli pub --url mqtt-tcp://127.0.0.1:1883 -t healthcheck -m ok 2>/dev/null || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 20
