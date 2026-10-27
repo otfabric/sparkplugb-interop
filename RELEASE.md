@@ -39,7 +39,7 @@ contract, two fixtures, and pinned MQTT brokers to run them on.
 
 - Container contract 0.1 ([docs/CONTAINER_CONTRACT.md](docs/CONTAINER_CONTRACT.md)): `edge`, `host`, `call` over a control socket, `print-capabilities`, `print-fixture`, `version`; JSON Lines events, call result documents, fixed exit codes.
 - Fixtures `baseline` (node with two devices, writable metrics, two updates) and `scalars` (all 14 scalar datatypes at their limits), with a JSON Schema and a validator for the cross-field rules.
-- Adapter images, see the table of [README.md](README.md).
+- Adapter images: Eclipse Tahu 1.0.21 (Java, edge and host), pysparkplug 0.6.1 (Python, edge and host), SparkplugNet 1.4.1 (C#, edge and host), srad 0.5.0 (Rust, edge and host), Eclipse Tahu sparkplug-client 3.2.4 (JavaScript, edge) and sparkplughost v0.4.0 (Go, host). See [README.md](README.md).
 - Broker pins: Eclipse Mosquitto, HiveMQ CE, EMQX and NanoMQ, by multi-arch digest in `versions.yaml` and `manifest.json`.
 - Self-tests: `scripts/smoke.sh` (contract of one image) and `scripts/interop.sh` (every host against every edge, every fixture, any broker), with expectations computed from the fixture, and `tests/known-bugs.tsv` for verified upstream defects.
 - Schemas for capability documents, call results and events; `make documents` validates every document the self-tests produce.
@@ -47,12 +47,12 @@ contract, two fixtures, and pinned MQTT brokers to run them on.
 
 ### Upstream notes
 
-Verified upstream defects are listed in [tests/known-bugs.tsv](tests/known-bugs.tsv) and described in [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md).
+The self-test passes on all four brokers with 0 failures. Verified upstream defects are listed in [tests/known-bugs.tsv](tests/known-bugs.tsv) and described in [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md).
 
 ### Not in this release
 
 - Templates, DataSets, arrays and properties in fixtures.
-- MQTT 5, TLS and broker authentication.
+- A choice of MQTT version (every adapter speaks MQTT 3.1.1 except srad, which speaks MQTT 5 only), TLS and broker authentication.
 - An upstream-candidate workflow (newer upstream versions probed weekly).
 
 ---
