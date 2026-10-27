@@ -1,0 +1,36 @@
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - unused
+    - ineffassign
+    - misspell
+    - nilerr
+
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - errcheck
+    paths:
+      - tests
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+  exclusions:
+    paths:
+      - tests
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+run:
+  timeout: 5m
