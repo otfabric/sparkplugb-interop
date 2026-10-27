@@ -52,7 +52,7 @@ services:
     ports:
       - "127.0.0.1:1885:1883/tcp"
     healthcheck:
-      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/1883'"]
+      test: ["CMD", "/opt/emqx/bin/emqx", "ctl", "status"]
       interval: 5s
       timeout: 5s
       retries: 20

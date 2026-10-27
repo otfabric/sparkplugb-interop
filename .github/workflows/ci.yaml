@@ -1,27 +1,21 @@
 name: CI
+run-name: "CI (${{ github.event_name }}) on ${{ github.ref_name }} by @${{ github.actor }}"
 
 on:
   push:
-    branches: [main]
+    branches: ["**"]
   pull_request:
-    branches: [main]
-  workflow_dispatch:
+    branches: ["**"]
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-go@v7
-        with:
-          go-version: "1.27"
-
-      - name: Vet
-        run: go vet ./...
-
-      - name: Test
-        run: go test ./harness/... -v
+  ci:
+    uses: otfabric/.github/.github/workflows/go-ci.yml@v2
+    with:
+      codecov-name: sparkplugb-interop
+      go-versions: '["1.27"]'
+      test-exclude-regex: "(/tests($|/))"
+    secrets: inherit
