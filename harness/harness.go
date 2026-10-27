@@ -36,7 +36,7 @@ func WaitForBroker(ctx context.Context, broker BrokerConfig) error {
 		case <-ticker.C:
 			conn, err := net.DialTimeout("tcp", addr, time.Second)
 			if err == nil {
-				conn.Close()
+				_ = conn.Close()
 				return nil
 			}
 		}

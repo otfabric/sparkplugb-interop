@@ -44,12 +44,12 @@ services:
   emqx:
     <<: *broker
     image: emqx/emqx:5.8.6
-    volumes:
-      - ./brokers/emqx/emqx.conf:/opt/emqx/etc/emqx.conf:ro
+    environment:
+      EMQX_ALLOW_ANONYMOUS: "true"
     ports:
       - "127.0.0.1:1885:1883/tcp"
     healthcheck:
-      test: ["CMD", "/opt/emqx/bin/emqx", "ctl", "status"]
+      test: ["CMD-SHELL", "emqx ctl status"]
       interval: 5s
       timeout: 5s
       retries: 20
