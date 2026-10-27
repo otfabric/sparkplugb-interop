@@ -13,7 +13,7 @@ linters:
 
   settings:
     misspell:
-      ignore-words:
+      ignore-rules:
         - mosquitto
   exclusions:
     rules:
