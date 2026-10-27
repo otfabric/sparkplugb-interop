@@ -140,10 +140,16 @@ final class Values {
 		return m;
 	}
 
-	/** {"name", "datatype", "value"} of a metric whose name is known. */
+	/**
+	 * {"name", "datatype", "value"} of a metric; a name that is not known (an
+	 * alias without a birth) is null, with the "alias".
+	 */
 	static ObjectNode doc(String name, Metric m) {
 		ObjectNode o = NODES.objectNode();
 		o.put("name", name);
+		if (name == null && m.hasAlias()) {
+			o.put("alias", m.getAlias());
+		}
 		o.put("datatype", m.getDataType() == null ? null : m.getDataType().getType());
 		o.set("value", Boolean.TRUE.equals(m.isNull()) ? NODES.nullNode() : toJson(m.getValue()));
 		return o;

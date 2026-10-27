@@ -173,12 +173,21 @@ internal static class Values
         };
     }
 
-    public static JsonObject Doc(Metric m) => new()
+    public static JsonObject Doc(Metric m)
     {
-        ["name"] = m.Name,
-        ["datatype"] = FromSpb(m.DataType),
-        ["value"] = ToJson(m),
-    };
+        var doc = new JsonObject
+        {
+            ["name"] = string.IsNullOrEmpty(m.Name) ? null : m.Name,
+            ["datatype"] = FromSpb(m.DataType),
+            ["value"] = ToJson(m),
+        };
+        if (string.IsNullOrEmpty(m.Name) && m.Alias is not null)
+        {
+            doc["alias"] = m.Alias; // an alias SparkplugNet cannot resolve
+        }
+
+        return doc;
+    }
 
     public static Metric Make(string name, string dt, JsonElement value, ulong? alias = null) =>
         new(name, ToSpb(dt), ToClr(dt, value)) { Alias = alias };

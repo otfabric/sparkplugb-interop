@@ -94,13 +94,18 @@ lint: ## Shellcheck the scripts (the installed shellcheck, or a container when t
 
 images: $(addprefix image-,$(ADAPTERS)) ## Build every adapter image for the host architecture
 
+# A mirror of Docker Hub does not always have every manifest (an architecture
+# of a multi-arch index it has not cached): then the build falls back to Docker
+# Hub, which serves the same digests.
 image-%: FORCE ## Build one adapter image, e.g. image-tahu
 	@echo "Building $* image ($(VERSION))..."
-	@$(RETRY) docker build \
-		--build-arg BASE_REGISTRY=$(BASE_REGISTRY) --build-arg ADAPTER_VERSION=$(VERSION) \
+	@build() { $(RETRY) docker build \
+		--build-arg BASE_REGISTRY=$$1 --build-arg ADAPTER_VERSION=$(VERSION) \
 		--tag $(call image,$*):$(VERSION) \
 		--file adapters/$*/Dockerfile \
-		.
+		.; }; \
+	build $(BASE_REGISTRY) || { [ "$(BASE_REGISTRY)" != docker.io/library ] \
+		&& echo "Building $* from Docker Hub: $(BASE_REGISTRY) failed" && build docker.io/library; }
 
 # ── Self-tests (images must be built) ─────────────────────────────────────────
 

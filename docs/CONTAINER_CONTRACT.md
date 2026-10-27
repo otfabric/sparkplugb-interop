@@ -223,7 +223,8 @@ Every metric in an event, a payload or a result is
 `{"name": "...", "datatype": "...", "value": ...}`:
 
 - `name` is the metric name, never an alias: a host resolves aliases with
-  the birth of the node.
+  the birth of the node. A host that has no birth for an alias (it lost or
+  rejected the birth) reports `"name": null` and the `alias`.
 - `datatype` is the Sparkplug datatype name, as the
   [fixtures](FIXTURES.md#datatypes) spell them: `Int8`, `Int16`, `Int32`,
   `Int64`, `UInt8`, `UInt16`, `UInt32`, `UInt64`, `Float`, `Double`,

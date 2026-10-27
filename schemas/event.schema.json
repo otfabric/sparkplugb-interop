@@ -4,76 +4,276 @@
   "title": "sparkplugb-interop event",
   "description": "One JSON line that 'edge' or 'host' writes to stdout. See docs/CONTAINER_CONTRACT.md#events.",
   "type": "object",
-  "required": ["event", "time"],
+  "required": [
+    "event",
+    "time"
+  ],
   "properties": {
-    "event": {"enum": ["ready", "published", "command", "primary-host", "message", "rebirth-requested", "connection-lost", "stopped"]},
-    "time": {"type": "string", "format": "date-time", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|\\+00:00)$"}
+    "event": {
+      "enum": [
+        "ready",
+        "published",
+        "command",
+        "primary-host",
+        "message",
+        "rebirth-requested",
+        "connection-lost",
+        "stopped"
+      ]
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|\\+00:00)$"
+    }
   },
   "allOf": [
     {
-      "if": {"properties": {"event": {"const": "published"}}},
-      "then": {
-        "required": ["type", "device", "seq", "bdSeq"],
+      "if": {
         "properties": {
-          "type": {"$ref": "#/$defs/messageType"},
-          "device": {"type": ["string", "null"]},
-          "seq": {"$ref": "#/$defs/seq"},
-          "bdSeq": {"$ref": "#/$defs/seq"}
+          "event": {
+            "const": "published"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "type",
+          "device",
+          "seq",
+          "bdSeq"
+        ],
+        "properties": {
+          "type": {
+            "$ref": "#/$defs/messageType"
+          },
+          "device": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "seq": {
+            "$ref": "#/$defs/seq"
+          },
+          "bdSeq": {
+            "$ref": "#/$defs/seq"
+          }
         }
       }
     },
     {
-      "if": {"properties": {"event": {"const": "message"}}},
-      "then": {
-        "required": ["type", "group", "edgeNode", "device", "seq", "bdSeq", "metrics"],
+      "if": {
         "properties": {
-          "type": {"$ref": "#/$defs/messageType"},
-          "group": {"type": "string"},
-          "edgeNode": {"type": "string"},
-          "device": {"type": ["string", "null"]},
-          "seq": {"$ref": "#/$defs/seq"},
-          "bdSeq": {"$ref": "#/$defs/seq"},
-          "metrics": {"type": "array", "items": {"$ref": "#/$defs/metric"}}
+          "event": {
+            "const": "message"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "type",
+          "group",
+          "edgeNode",
+          "device",
+          "seq",
+          "bdSeq",
+          "metrics"
+        ],
+        "properties": {
+          "type": {
+            "$ref": "#/$defs/messageType"
+          },
+          "group": {
+            "type": "string"
+          },
+          "edgeNode": {
+            "type": "string"
+          },
+          "device": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "seq": {
+            "$ref": "#/$defs/seq"
+          },
+          "bdSeq": {
+            "$ref": "#/$defs/seq"
+          },
+          "metrics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/metric"
+            }
+          }
         }
       }
     },
     {
-      "if": {"properties": {"event": {"const": "command"}}},
-      "then": {
-        "required": ["device", "metrics", "applied"],
+      "if": {
         "properties": {
-          "device": {"type": ["string", "null"]},
-          "metrics": {"type": "array", "items": {"$ref": "#/$defs/metric"}},
-          "applied": {"type": "boolean"}
+          "event": {
+            "const": "command"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "device",
+          "metrics",
+          "applied"
+        ],
+        "properties": {
+          "device": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "metrics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/metric"
+            }
+          },
+          "applied": {
+            "type": "boolean"
+          }
         }
       }
     },
     {
-      "if": {"properties": {"event": {"const": "primary-host"}}},
-      "then": {"required": ["hostId", "online"], "properties": {"hostId": {"type": "string"}, "online": {"type": "boolean"}}}
-    },
-    {
-      "if": {"properties": {"event": {"const": "rebirth-requested"}}},
+      "if": {
+        "properties": {
+          "event": {
+            "const": "primary-host"
+          }
+        }
+      },
       "then": {
-        "required": ["group", "edgeNode", "reason"],
-        "properties": {"reason": {"enum": ["seq-gap", "unknown-node"]}}
+        "required": [
+          "hostId",
+          "online"
+        ],
+        "properties": {
+          "hostId": {
+            "type": "string"
+          },
+          "online": {
+            "type": "boolean"
+          }
+        }
       }
     },
     {
-      "if": {"properties": {"event": {"const": "connection-lost"}}},
-      "then": {"required": ["detail"], "properties": {"detail": {"type": "string"}}}
+      "if": {
+        "properties": {
+          "event": {
+            "const": "rebirth-requested"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "group",
+          "edgeNode",
+          "reason"
+        ],
+        "properties": {
+          "reason": {
+            "enum": [
+              "seq-gap",
+              "unknown-node"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "connection-lost"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "detail"
+        ],
+        "properties": {
+          "detail": {
+            "type": "string"
+          }
+        }
+      }
     }
   ],
   "$defs": {
-    "messageType": {"enum": ["NBIRTH", "NDEATH", "DBIRTH", "DDEATH", "NDATA", "DDATA", "NCMD", "DCMD"]},
-    "seq": {"type": ["integer", "null"], "minimum": 0, "maximum": 255},
+    "messageType": {
+      "enum": [
+        "NBIRTH",
+        "NDEATH",
+        "DBIRTH",
+        "DDEATH",
+        "NDATA",
+        "DDATA",
+        "NCMD",
+        "DCMD"
+      ]
+    },
+    "seq": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 255
+    },
     "metric": {
       "type": "object",
-      "required": ["name", "datatype", "value"],
+      "required": [
+        "name",
+        "datatype",
+        "value"
+      ],
       "properties": {
-        "name": {"type": "string", "minLength": 1},
-        "datatype": {"type": "string"},
-        "value": {"type": ["number", "boolean", "string", "null"]}
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "alias": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "datatype": {
+          "type": "string"
+        },
+        "value": {
+          "type": [
+            "number",
+            "boolean",
+            "string",
+            "null"
+          ]
+        }
+      },
+      "if": {
+        "properties": {
+          "name": {
+            "type": "null"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "alias"
+        ]
       }
     }
   }

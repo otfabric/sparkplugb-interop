@@ -66,12 +66,27 @@ cleanup() {
 
 run_label() { echo "sparkplugb-interop.run=${RUN_ID}"; }
 
+# pullable <ref>: prints ref, or the same image on Docker Hub when ref is on
+# BROKER_REGISTRY and that mirror does not serve it (a mirror does not always
+# have every manifest). Pulls it unless it is present.
+pullable() {
+    local ref="$1" hub
+    if docker image inspect "${ref}" >/dev/null 2>&1 \
+        || "${_LIB_DIR}/retry.sh" docker pull -q "${ref}" >/dev/null 2>&1; then echo "${ref}"; return 0; fi
+    [[ "${BROKER_REGISTRY}" != docker.io && "${ref}" == "${BROKER_REGISTRY}/"* ]] || { log "cannot pull ${ref}"; return 1; }
+    hub="docker.io/${ref#"${BROKER_REGISTRY}"/}"
+    log "pulling ${hub}: ${BROKER_REGISTRY} does not serve it"
+    docker image inspect "${hub}" >/dev/null 2>&1 \
+        || "${_LIB_DIR}/retry.sh" docker pull -q "${hub}" >/dev/null || return 1
+    echo "${hub}"
+}
+
 # start_broker <name> <container>: starts the pinned broker and waits until it
 # accepts an MQTT CONNECT and PUBLISH (the pinned mosquitto_pub is the probe).
 start_broker() {
     local broker="$1" name="$2" img probe args=() start=${SECONDS}
-    img=$(broker_image "${broker}") || return 1
-    probe=$(broker_image mosquitto) || return 1
+    img=$(broker_image "${broker}") && img=$(pullable "${img}") || return 1
+    probe=$(broker_image mosquitto) && probe=$(pullable "${probe}") || return 1
     [[ "${broker}" == mosquitto ]] && args=(mosquitto -c /mosquitto-no-auth.conf)
     docker rm -f -v "${name}" >/dev/null 2>&1
     docker run -d --name "${name}" --network "${NETWORK}" --label "$(run_label)" \

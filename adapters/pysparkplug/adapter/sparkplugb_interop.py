@@ -235,7 +235,10 @@ def from_spb_value(dt, v):
 
 def metric_doc(m):
     dt = FROM_SPB.get(m.datatype, m.datatype.name)
-    return {"name": m.name, "datatype": dt, "value": None if m.is_null else from_spb_value(dt, m.value)}
+    doc = {"name": m.name, "datatype": dt, "value": None if m.is_null else from_spb_value(dt, m.value)}
+    if m.name is None:  # an alias the host has no birth for
+        doc["alias"] = m.alias
+    return doc
 
 
 def payload_metrics(payload):
