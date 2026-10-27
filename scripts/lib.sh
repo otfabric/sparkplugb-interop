@@ -11,6 +11,7 @@ RUN_ID="${RUN_ID:-$$}"
 NETWORK="sparkplugb-interop-${RUN_ID}"
 READY_FILE="/run/sparkplugb-interop/ready"
 WAIT_TIMEOUT="${WAIT_TIMEOUT:-60}"
+CONNECT_TIMEOUT_MS="${CONNECT_TIMEOUT_MS:-45000}"
 # JVM and Erlang brokers start slowly on a busy runner.
 BROKER_TIMEOUT="${BROKER_TIMEOUT:-180}"
 # Registry of the broker images: a mirror of Docker Hub serves the same
@@ -107,11 +108,15 @@ start_broker() {
 broker_url() { echo "tcp://$1:1883"; }
 
 # start_role <adapter> <container> <edge|host> [args...]
+# The MQTT connection gets CONNECT_TIMEOUT_MS (contract default: 10 s): a JVM
+# adapter on a busy runner can take longer to reach a broker that just
+# started, and gave up. It stays below WAIT_TIMEOUT.
 start_role() {
     local adapter="$1" name="$2"; shift 2
     docker rm -f -v "${name}" >/dev/null 2>&1
     docker run -d --name "${name}" --network "${NETWORK}" --label "$(run_label)" \
-        ${DOCKER_ARGS[@]+"${DOCKER_ARGS[@]}"} "$(image_of "${adapter}")" "$@" >/dev/null
+        ${DOCKER_ARGS[@]+"${DOCKER_ARGS[@]}"} "$(image_of "${adapter}")" "$@" \
+        --connect-timeout-ms "${CONNECT_TIMEOUT_MS}" >/dev/null
 }
 
 # wait_ready <container>: the ready file exists only once the role is fully up.

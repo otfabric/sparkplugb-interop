@@ -14,7 +14,8 @@
 #
 # Environment: REGISTRY, VERSION, BROKER, BROKER_IMAGE, KNOWN_BUGS_AS,
 #              VERBOSE=1, REPORT_DIR (keeps the normalized host messages of
-#              every pairing), EVENT_TIMEOUT.
+#              every pairing), EVENT_TIMEOUT, WAIT_TIMEOUT,
+#              CONNECT_TIMEOUT_MS (MQTT connection of the roles, 45000).
 
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
