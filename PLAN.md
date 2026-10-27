@@ -33,8 +33,6 @@ with everything green in CI on both architectures.
 - A role for applications that are not the primary host.
 - Reordering by the host (the reorder timeout) without timing dependence.
 - MQTT 5 and TLS once a consumer needs them.
-- An upstream-candidate workflow, as in the sibling interop repositories.
-
 ## Evaluated and left out
 
 - Eclipse Tahu C (`tahu/c`): a protobuf and payload library without an MQTT

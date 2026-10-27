@@ -35,11 +35,14 @@ check() { local label="$1"; shift; if "$@" >/dev/null 2>&1; then ok "${label}"; 
 
 image_of() { echo "${REGISTRY}/sparkplugb-interop-$1:${VERSION}"; }
 
-# broker_image <name>: the pinned reference of versions.yaml, through BROKER_REGISTRY.
+# broker_image <name>: the pinned reference of versions.yaml, through
+# BROKER_REGISTRY. BROKER_IMAGE (a Docker Hub reference) replaces the pin of
+# BROKER: scripts/candidate.sh tests a newer broker release with it.
 broker_image() {
     local ref
-    ref=$(awk -v b="  $1:" '$0 == b { found = 1; next } found && /^  [a-z]/ { exit }
-        found && /^    image:/ { gsub(/"/, "", $2); print $2; exit }' "${ROOT}/versions.yaml")
+    if [[ -n "${BROKER_IMAGE:-}" && "$1" == "${BROKER}" ]]; then ref="${BROKER_IMAGE}"
+    else ref=$(awk -v b="  $1:" '$0 == b { found = 1; next } found && /^  [a-z]/ { exit }
+        found && /^    image:/ { gsub(/"/, "", $2); print $2; exit }' "${ROOT}/versions.yaml"); fi
     [[ -n "${ref}" ]] || { log "no broker $1 in versions.yaml"; return 1; }
     case "${ref}" in
         */*) echo "${BROKER_REGISTRY}/${ref}" ;;

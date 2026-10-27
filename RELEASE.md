@@ -44,6 +44,7 @@ contract, two fixtures, and pinned MQTT brokers to run them on.
 - Self-tests: `scripts/smoke.sh` (contract of one image) and `scripts/interop.sh` (every host against every edge, every fixture, any broker), with expectations computed from the fixture, and `tests/known-bugs.tsv` for verified upstream defects.
 - Schemas for capability documents, call results and events; `make documents` validates every document the self-tests produce.
 - CI natively on amd64 and arm64, the cross-stack self-test on every broker, and a tag-driven release to GHCR.
+- Upstream candidates workflow, weekly and on demand: the latest release of every adapter library and broker against its pin, with a self-test of each newer one and a decision table (`make upstream`, `make candidate-<name>`).
 
 ### Upstream notes
 
@@ -53,6 +54,4 @@ The self-test passes on all four brokers with 0 failures. Verified upstream defe
 
 - Templates, DataSets, arrays and properties in fixtures.
 - A choice of MQTT version (every adapter speaks MQTT 3.1.1 except srad, which speaks MQTT 5 only), TLS and broker authentication.
-- An upstream-candidate workflow (newer upstream versions probed weekly).
-
 ---

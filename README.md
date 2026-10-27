@@ -150,7 +150,7 @@ sparkplugb-interop/
 │   └── scalars/         an edge node with every scalar datatype
 ├── schemas/             JSON Schemas of capabilities, events and call results
 ├── tests/known-bugs.tsv bugs of upstream versions, scoped by role, peer, broker, fixture and step
-├── scripts/             validate, smoke, cross-stack self-test, release manifest
+├── scripts/             validate, smoke, cross-stack self-test, upstream candidates, release manifest
 ├── docs/                contract, fixtures, capabilities, compatibility
 ├── versions.yaml        every upstream pin, broker and base image digest
 └── Makefile
@@ -164,7 +164,17 @@ make ci          # validate, lint, build, smoke, cross-stack self-test, document
 make validate    # fixtures, versions.yaml and RELEASE.md
 make interop-brokers   # the cross-stack self-test on every broker
 make buildx      # check the other architecture locally, under emulation (CI builds both natively)
+make upstream    # pin vs latest release of every adapter library and broker
+make candidate-srad CANDIDATE=0.6.0   # self-test an adapter on another upstream version (pins untouched)
+make candidate-nanomq CANDIDATE=emqx/nanomq:0.25.8   # the pinned adapters on another broker release
 ```
+
+The **Upstream candidates** workflow (Actions → Upstream candidates → Run
+workflow; also every Monday) resolves the latest release of Eclipse Tahu,
+pysparkplug, SparkplugNet, srad, the Tahu sparkplug-client, sparkplughost
+and the four brokers, self-tests every one that is newer than its pin, and
+reports pin versus latest in its job summary. Its `force` input self-tests
+even when the pin is the latest; `only` limits it to some names.
 
 `make smoke ADAPTERS=srad` and `make interop ADAPTERS="tahu srad"` narrow what
 is run. See [CONTRIBUTING.md](CONTRIBUTING.md) for adding an adapter, a

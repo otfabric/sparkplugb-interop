@@ -45,7 +45,7 @@ export REGISTRY VERSION BROKER_REGISTRY
 # image-% and smoke-% are pattern rules, which make ignores for .PHONY
 # targets: they depend on FORCE instead.
 .PHONY: help all ci validate documents lint images smoke interop interop-brokers buildx publish \
-        buildx-setup publish-arch publish-manifest digests capabilities lock-pysparkplug clean FORCE
+        buildx-setup publish-arch publish-manifest digests capabilities lock-pysparkplug upstream clean FORCE
 FORCE:
 
 help: ## Show this help
@@ -119,6 +119,24 @@ interop: ## Cross-stack self-test on BROKER (default mosquitto): every host agai
 
 interop-brokers: ## Cross-stack self-test on every broker of BROKERS
 	@for b in $(BROKERS); do echo "== broker $$b"; BROKER=$$b scripts/interop.sh $(ADAPTERS) || exit 1; done
+
+# ── Upstream candidates ───────────────────────────────────────────────────────
+# Self-tests another upstream release than the pin; the pins are untouched.
+# An adapter is built on library version CANDIDATE (its build files locked
+# again in a copy of the repository); a broker candidate is a Docker Hub
+# image. Needs the pinned images: make images. scripts/upstream.py prints the
+# latest releases; .github/workflows/candidate.yml runs this every week.
+
+CANDIDATE ?=
+
+upstream: ## Print pin vs latest upstream release of every adapter library and broker
+	@for n in $$(python3 scripts/upstream.py --names | tr -d '[],"'); do \
+		python3 scripts/upstream.py $$n 2>/dev/null | awk -F= -v n=$$n '{ v[$$1] = $$2 } END { printf "%-14s %-14s %-14s update=%s\n", n, v["pin"], v["latest"], v["update"] }'; \
+	done
+
+candidate-%: FORCE ## Self-test an upstream candidate, e.g. candidate-srad CANDIDATE=0.6.0, candidate-nanomq CANDIDATE=emqx/nanomq:0.25.8
+	@test -n "$(CANDIDATE)" || { echo "Error: CANDIDATE=<version> (adapter) or CANDIDATE=<image> (broker) is required"; exit 1; }
+	@scripts/candidate.sh $* $(CANDIDATE)
 
 capabilities: ## Print the capability document of every adapter
 	@for a in $(ADAPTERS); do docker run --rm $(call image,$$a):$(VERSION) print-capabilities; done

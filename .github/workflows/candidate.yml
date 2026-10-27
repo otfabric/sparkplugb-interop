@@ -1,0 +1,199 @@
+name: Upstream candidates
+run-name: "Candidate upstream probe by @${{ github.actor }}"
+
+# Resolves the latest upstream release of every adapter's library (Maven
+# Central, PyPI, NuGet, crates.io, npm, the Go module proxy) and of every
+# broker (Docker Hub), self-tests each one that is newer than its pin, and
+# publishes a pin-vs-latest decision table in the Job Summary. Release pins
+# (Dockerfiles, lock files, versions.yaml) are never changed.
+#
+# A candidate is tested like a release: an adapter is built on the new
+# version (its build files locked again in a copy of the checkout), smoke
+# tested and cross-stack tested against the pinned other adapters; a broker
+# runs the cross-stack self-test of the pinned adapters. The known bugs of the
+# pinned version (tests/known-bugs.tsv) apply to the candidate, so the run
+# fails only on what is new, and reports a known bug that is gone as stale.
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      only:
+        description: "Adapters and brokers to probe, space separated (empty: all)"
+        required: false
+        default: ""
+      force:
+        description: "Self-test even when the pin is the latest release (checks the pipeline)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  # As ci.yml: base images, brokers and tooling come from Google's mirror of
+  # Docker Hub, with Docker Hub as the fallback for a manifest it lacks.
+  BASE_REGISTRY: mirror.gcr.io/library
+  BROKER_REGISTRY: mirror.gcr.io
+  TOOLS_REGISTRY: mirror.gcr.io
+
+jobs:
+  names:
+    name: Upstreams
+    runs-on: ubuntu-latest
+    outputs:
+      names: ${{ steps.names.outputs.names }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: names
+        env:
+          ONLY: ${{ inputs.only }}
+        run: |
+          all=$(python3 scripts/upstream.py --names)
+          if [ -n "${ONLY}" ]; then
+            names=$(jq -c --arg only "${ONLY}" '[.[] | select(. as $n | $only | split(" ") | index($n))]' <<<"${all}")
+          else
+            names="${all}"
+          fi
+          [ "${names}" != "[]" ] || { echo "::error::no adapter or broker named '${ONLY}'"; exit 1; }
+          echo "names=${names}" >> "$GITHUB_OUTPUT"
+
+  candidate:
+    name: ${{ matrix.name }}
+    needs: names
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        name: ${{ fromJSON(needs.names.outputs.names) }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Resolve pin vs latest release
+        id: resolve
+        run: python3 scripts/upstream.py "${{ matrix.name }}" >> "$GITHUB_OUTPUT"
+
+      - name: Build the pinned images
+        id: images
+        if: steps.resolve.outputs.update == 'yes' || inputs.force
+        run: make images
+
+      - name: Self-test the latest release
+        id: test
+        if: steps.images.outcome == 'success'
+        continue-on-error: true
+        env:
+          CANDIDATE: ${{ steps.resolve.outputs.kind == 'broker' && steps.resolve.outputs.image || steps.resolve.outputs.latest }}
+        run: |
+          set -o pipefail
+          make "candidate-${{ matrix.name }}" CANDIDATE="${CANDIDATE}" 2>&1 | tee candidate.log
+
+      - name: Record the result
+        if: always()
+        env:
+          NAME: ${{ matrix.name }}
+          KIND: ${{ steps.resolve.outputs.kind }}
+          UPSTREAM: ${{ steps.resolve.outputs.upstream }}
+          SOURCE: ${{ steps.resolve.outputs.source }}
+          PIN: ${{ steps.resolve.outputs.pin }}
+          LATEST: ${{ steps.resolve.outputs.latest }}
+          UPDATE: ${{ steps.resolve.outputs.update }}
+          KNOWN: ${{ steps.resolve.outputs.known }}
+          IMAGES: ${{ steps.images.outcome }}
+          TEST: ${{ steps.test.outcome }}
+        run: |
+          result=""
+          [ -f candidate.log ] && result=$(grep -E '^\[interop\] [0-9]+ passed' candidate.log | tail -1 | sed 's/^\[interop\] //')
+          stale=0
+          [ -f candidate.log ] && stale=$(grep -c 'stale entry in tests/known-bugs.tsv' candidate.log || true)
+          jq -n --arg name "$NAME" --arg kind "$KIND" --arg upstream "$UPSTREAM" --arg source "$SOURCE" \
+            --arg pin "$PIN" --arg latest "$LATEST" --arg update "$UPDATE" --arg known "$KNOWN" \
+            --arg images "$IMAGES" --arg test "$TEST" --arg result "$result" --arg stale "$stale" \
+            '$ARGS.named' > "result-${NAME}.json"
+          cat "result-${NAME}.json"
+
+      - name: Upload the result and log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: candidate-${{ matrix.name }}
+          path: |
+            result-*.json
+            candidate.log
+          if-no-files-found: ignore
+
+  summary:
+    name: Decision table
+    needs: candidate
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: candidate-*
+          merge-multiple: true
+      - name: Write pin-vs-latest summary
+        run: |
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import glob
+          import json
+
+          rows = [json.load(open(p)) for p in sorted(glob.glob("result-*.json"))]
+          order = {"adapter": 0, "broker": 1}
+          rows.sort(key=lambda r: (order.get(r["kind"], 2), r["name"]))
+
+          def tested(r):
+              if r["images"] == "failure":
+                  return "`failure` (pinned images did not build)"
+              if r["test"] in ("", "skipped"):
+                  return "same as pin" if r["update"] == "no" else "not run"
+              text = f"`{r['test']}`"
+              if r["stale"] not in ("", "0"):
+                  text += f"<br>{r['stale']} known bug(s) fixed"
+              return f"{text}<br>{r['result']}" if r["result"] else text
+
+          print("## Upstream candidate report")
+          print()
+          print("Release pins were **not** modified. Use this table to decide whether to bump.")
+          print()
+          print("| Upstream | Kind | Source | Release pin | Latest release | Candidate self-test | Update? |")
+          print("|---|---|---|---|---|---|---|")
+          for r in rows:
+              print(f"| {r['name']} ({r['upstream'] or '?'}) | {r['kind'] or '?'} | {r['source'] or '?'} | "
+                    f"`{r['pin'] or '?'}` | `{r['latest'] or '?'}` | {tested(r)} | **{r['update'] or '?'}** |")
+          print()
+          known = [r for r in rows if r["known"]]
+          if known:
+              print("### Known bugs of the pinned versions")
+              print()
+              print("The candidate is tested with these applied: a `success` means nothing new broke, and an entry "
+                    "it no longer reproduces fails the run as *stale*, which is good news.")
+              print()
+              for r in known:
+                  for k in r["known"].split("; "):
+                      print(f"- {r['name']} `{r['pin']}`: {k}")
+              print()
+          print("### Pin locations")
+          print()
+          print("- tahu: `adapters/tahu/Dockerfile` (`TAHU_VERSION`), `pom.xml` and `dependencies.sha256`")
+          print("- pysparkplug: `adapters/pysparkplug/Dockerfile` (`PYSPARKPLUG_VERSION`), `requirements.in` and "
+                "`requirements.txt` (`make lock-pysparkplug`)")
+          print("- sparkplugnet: `adapters/sparkplugnet/Dockerfile` (`SPARKPLUGNET_VERSION`), `SparkplugbInterop.csproj` "
+                "and `packages.lock.json`")
+          print("- srad: `adapters/srad/Dockerfile` (`SRAD_VERSION`, licence checksums), `Cargo.toml` and `Cargo.lock`")
+          print("- tahu-js: `adapters/tahu-js/Dockerfile` (`SPARKPLUG_CLIENT_VERSION`), `package.json` and `package-lock.json`")
+          print("- sparkplughost: `adapters/sparkplughost/Dockerfile` (`SPARKPLUGHOST_VERSION`), `go.mod` and `go.sum`")
+          print("- brokers: `versions.yaml` (`brokers:`, pinned by digest)")
+          print()
+          print("Every pin is mirrored in `versions.yaml`; `scripts/check-versions.sh` checks they agree.")
+          print()
+          print("### How to read this")
+          print()
+          print("- **Update? = yes** means the pin is not the latest upstream release.")
+          print("- **Candidate self-test** `success`: the pin can move. `failure`: read the uploaded log "
+                "(artifact `candidate-<name>`) before bumping.")
+          print("- Reproduce locally: `make images` then `make candidate-<name> CANDIDATE=<version or image>`.")
+          print("- Bump deliberately, after reading the upstream changelog, and record the change in "
+                "`docs/COMPATIBILITY.md` and `RELEASE.md`.")
+          PY

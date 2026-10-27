@@ -12,8 +12,9 @@
 # skipped; steps that fail on a bug listed in tests/known-bugs.tsv are counted
 # as known, and an entry that no longer fails is an error.
 #
-# Environment: REGISTRY, VERSION, BROKER, VERBOSE=1, REPORT_DIR (keeps the
-#              normalized host messages of every pairing), EVENT_TIMEOUT.
+# Environment: REGISTRY, VERSION, BROKER, BROKER_IMAGE, KNOWN_BUGS_AS,
+#              VERBOSE=1, REPORT_DIR (keeps the normalized host messages of
+#              every pairing), EVENT_TIMEOUT.
 
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -42,7 +43,13 @@ has() { jq -e "$2" <<<"${CAPS[$1]}" >/dev/null 2>&1; }  # has <adapter> <jq pred
 # step (regex), description. An entry applies when the adapter of that role
 # in the pairing is that implementation at that version and the other
 # columns match.
-declare -A KNOWN_USED
+#
+# KNOWN_BUGS_AS="<implementation>=<version> ..." applies the entries of that
+# version to the implementation at any version: a candidate of a newer
+# upstream then fails only on what is new, and an entry it no longer
+# reproduces is reported stale (the bug is fixed).
+declare -A KNOWN_USED KNOWN_AS
+for kv in ${KNOWN_BUGS_AS:-}; do KNOWN_AS[${kv%%=*}]="${kv#*=}"; done
 KNOWN_LINES=()
 while IFS=$'\t' read -r k_impl k_version k_role k_peer k_broker k_fixture k_step k_what; do
     [[ -z "${k_impl}" || "${k_impl}" == \#* || "${k_impl}" == implementation ]] && continue
@@ -58,7 +65,7 @@ known_bug() {
     for line in ${KNOWN_LINES[@]+"${KNOWN_LINES[@]}"}; do
         IFS=$'\t' read -r impl v role peer br fx s w <<<"${line}"
         if [[ "${role}" == host ]]; then x="${HA}" y="${EA}"; else x="${EA}" y="${HA}"; fi
-        if [[ "${impl}" == "${x}" && "${v}" == "${VERSIONS[$x]:-}" ]] && [[ "${y}" =~ ^(${peer})$ ]] \
+        if [[ "${impl}" == "${x}" ]] && [[ "${v}" == "${VERSIONS[$x]:-}" || "${v}" == "${KNOWN_AS[$x]:-}" ]] && [[ "${y}" =~ ^(${peer})$ ]] \
             && [[ "${BROKER}" =~ ^(${br})$ ]] && [[ "${FIXTURE}" =~ ^(${fx})$ ]] && [[ "${step}" =~ ^(${s})$ ]]; then
             printf '%s' "${line}"; return 0
         fi
