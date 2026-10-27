@@ -1,0 +1,61 @@
+{
+  "name": "host-application-basic-lifecycle",
+  "description": "Minimal Host Application lifecycle: connect, STATE birth, monitor edge, disconnect",
+  "broker": "mosquitto",
+  "steps": [
+    {
+      "action": "connect",
+      "config": {
+        "hostID": "testHost",
+        "brokerURL": "tcp://mosquitto:1883",
+        "cleanSession": true
+      },
+      "expect": {
+        "will": {
+          "topic": "spBv1.0/STATE/testHost",
+          "qos": 1,
+          "retained": true,
+          "payload": "OFFLINE"
+        }
+      }
+    },
+    {
+      "action": "publish",
+      "message": {
+        "topic": "spBv1.0/STATE/testHost",
+        "qos": 1,
+        "retained": true,
+        "payload": "ONLINE"
+      }
+    },
+    {
+      "action": "subscribe",
+      "topic": "spBv1.0/#",
+      "qos": 0
+    },
+    {
+      "action": "expect_receive",
+      "message": {
+        "topic": "spBv1.0/testGroup/NBIRTH/testNode",
+        "payload": {
+          "seq": 0,
+          "metrics": [
+            {"name": "bdSeq", "type": "UInt64"},
+            {"name": "temperature", "type": "Double"}
+          ]
+        }
+      }
+    },
+    {
+      "action": "disconnect",
+      "expect": {
+        "lastPublish": {
+          "topic": "spBv1.0/STATE/testHost",
+          "qos": 1,
+          "retained": true,
+          "payload": "OFFLINE"
+        }
+      }
+    }
+  ]
+}

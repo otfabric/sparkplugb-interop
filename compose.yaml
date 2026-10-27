@@ -1,0 +1,63 @@
+# Sparkplug B interoperability test infrastructure.
+#
+#   docker compose up -d mosquitto       # single broker
+#   docker compose up -d                 # all brokers
+#   docker compose down
+#
+# All broker ports are published on loopback only. These are unauthenticated
+# MQTT brokers for testing and must not be exposed to any other network.
+
+x-broker: &broker
+  restart: "no"
+  stop_grace_period: 5s
+  networks: [sparkplugb-interop]
+
+services:
+  mosquitto:
+    <<: *broker
+    image: eclipse-mosquitto:2.0.21
+    volumes:
+      - ./brokers/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    ports:
+      - "127.0.0.1:1883:1883/tcp"
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -t '$$SYS/broker/uptime' -C 1 -W 2"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  hivemq-ce:
+    <<: *broker
+    image: hivemq/hivemq-ce:2024.12
+    volumes:
+      - ./brokers/hivemq-ce/config.xml:/opt/hivemq/conf/config.xml:ro
+    ports:
+      - "127.0.0.1:1884:1883/tcp"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/ || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+      start_period: 15s
+
+  emqx:
+    <<: *broker
+    image: emqx/emqx:5.8.6
+    environment:
+      EMQX_NAME: emqx
+      EMQX_HOST: 127.0.0.1
+    volumes:
+      - ./brokers/emqx/emqx.conf:/opt/emqx/etc/emqx.conf:ro
+    ports:
+      - "127.0.0.1:1885:1883/tcp"
+    healthcheck:
+      test: ["CMD-SHELL", "emqx ctl status | grep -q running"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+      start_period: 15s
+
+networks:
+  sparkplugb-interop:
+    driver: bridge

@@ -1,0 +1,78 @@
+{
+  "name": "rebirth-cycle",
+  "description": "Host sends NCMD rebirth, edge responds with NBIRTH + DBIRTH",
+  "broker": "mosquitto",
+  "steps": [
+    {
+      "action": "publish",
+      "comment": "Initial NBIRTH from edge",
+      "message": {
+        "topic": "spBv1.0/testGroup/NBIRTH/testNode",
+        "qos": 0,
+        "retained": false,
+        "payload": {
+          "seq": 0,
+          "metrics": [
+            {"name": "bdSeq", "type": "UInt64", "value": 0},
+            {"name": "temperature", "type": "Double", "value": 22.5}
+          ]
+        }
+      }
+    },
+    {
+      "action": "publish",
+      "comment": "DBIRTH for device",
+      "message": {
+        "topic": "spBv1.0/testGroup/DBIRTH/testNode/sensor1",
+        "qos": 0,
+        "retained": false,
+        "payload": {
+          "seq": 1,
+          "metrics": [
+            {"name": "pressure", "type": "Float", "value": 101.3}
+          ]
+        }
+      }
+    },
+    {
+      "action": "publish",
+      "comment": "Host sends rebirth command",
+      "message": {
+        "topic": "spBv1.0/testGroup/NCMD/testNode",
+        "qos": 0,
+        "retained": false,
+        "payload": {
+          "metrics": [
+            {"name": "Node Control/Rebirth", "type": "Boolean", "value": true}
+          ]
+        }
+      }
+    },
+    {
+      "action": "expect_receive",
+      "comment": "Edge re-publishes NBIRTH",
+      "message": {
+        "topic": "spBv1.0/testGroup/NBIRTH/testNode",
+        "payload": {
+          "seq": 0,
+          "metrics": [
+            {"name": "bdSeq", "type": "UInt64"},
+            {"name": "temperature", "type": "Double"}
+          ]
+        }
+      }
+    },
+    {
+      "action": "expect_receive",
+      "comment": "Edge re-publishes DBIRTH for each online device",
+      "message": {
+        "topic": "spBv1.0/testGroup/DBIRTH/testNode/sensor1",
+        "payload": {
+          "metrics": [
+            {"name": "pressure", "type": "Float"}
+          ]
+        }
+      }
+    }
+  ]
+}

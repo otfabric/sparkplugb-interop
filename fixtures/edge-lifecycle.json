@@ -1,0 +1,79 @@
+{
+  "name": "edge-node-basic-lifecycle",
+  "description": "Minimal Edge Node lifecycle: connect, birth, data, death",
+  "broker": "mosquitto",
+  "steps": [
+    {
+      "action": "connect",
+      "config": {
+        "groupID": "testGroup",
+        "edgeNodeID": "testNode",
+        "brokerURL": "tcp://mosquitto:1883",
+        "cleanSession": true
+      },
+      "expect": {
+        "will": {
+          "topic": "spBv1.0/testGroup/NDEATH/testNode",
+          "qos": 1,
+          "retained": false,
+          "payload": {
+            "metrics": [{"name": "bdSeq", "type": "UInt64"}]
+          }
+        }
+      }
+    },
+    {
+      "action": "publish",
+      "message": {
+        "topic": "spBv1.0/testGroup/NBIRTH/testNode",
+        "qos": 0,
+        "retained": false,
+        "payload": {
+          "seq": 0,
+          "metrics": [
+            {"name": "bdSeq", "type": "UInt64", "value": 1},
+            {"name": "temperature", "type": "Double", "value": 22.5}
+          ]
+        }
+      }
+    },
+    {
+      "action": "publish",
+      "message": {
+        "topic": "spBv1.0/testGroup/DBIRTH/testNode/sensor1",
+        "qos": 0,
+        "retained": false,
+        "payload": {
+          "seq": 1,
+          "metrics": [
+            {"name": "pressure", "type": "Float", "value": 101.3}
+          ]
+        }
+      }
+    },
+    {
+      "action": "publish",
+      "message": {
+        "topic": "spBv1.0/testGroup/NDATA/testNode",
+        "qos": 0,
+        "retained": false,
+        "payload": {
+          "seq": 2,
+          "metrics": [
+            {"name": "temperature", "type": "Double", "value": 23.1}
+          ]
+        }
+      }
+    },
+    {
+      "action": "disconnect",
+      "expect": {
+        "lastPublish": {
+          "topic": "spBv1.0/testGroup/NDEATH/testNode",
+          "qos": 1,
+          "retained": false
+        }
+      }
+    }
+  ]
+}
