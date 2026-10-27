@@ -63,7 +63,6 @@ jobs:
 
           if [ -n "${updates}" ]; then
             echo "found=true" >> "$GITHUB_OUTPUT"
-            # Multiline output
             {
               echo "details<<EOF"
               echo -e "${updates}"
@@ -84,7 +83,7 @@ jobs:
               | jq -r '.tag_name // empty')
             if [ -n "${latest}" ]; then
               echo "  ${name}: latest release ${latest}"
-              updates="${updates}- **${name}** (${repo}): latest release \`${latest}\`\n"
+              updates="${updates}- **${name}** (${repo}): latest release ${latest}\n"
             fi
           }
 
@@ -109,6 +108,9 @@ jobs:
       - name: Open issue if updates found
         if: steps.brokers.outputs.found == 'true' || steps.adapters.outputs.found == 'true'
         uses: actions/github-script@v9
+        env:
+          BROKER_DETAILS: ${{ steps.brokers.outputs.details }}
+          ADAPTER_DETAILS: ${{ steps.adapters.outputs.details }}
         with:
           script: |
             const existing = await github.rest.issues.listForRepo({
@@ -124,12 +126,12 @@ jobs:
 
             let body = 'The weekly version check found newer releases.\n\n';
 
-            const brokerDetails = `${{ steps.brokers.outputs.details }}`;
+            const brokerDetails = process.env.BROKER_DETAILS || '';
             if (brokerDetails.trim()) {
               body += '## MQTT Brokers\n\n' + brokerDetails + '\n';
             }
 
-            const adapterDetails = `${{ steps.adapters.outputs.details }}`;
+            const adapterDetails = process.env.ADAPTER_DETAILS || '';
             if (adapterDetails.trim()) {
               body += '## Interop Adapters\n\n' + adapterDetails + '\n';
             }
