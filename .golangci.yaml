@@ -11,6 +11,10 @@ linters:
     - misspell
     - nilerr
 
+  settings:
+    misspell:
+      ignore-words:
+        - mosquitto
   exclusions:
     rules:
       - path: _test\.go
