@@ -18,4 +18,5 @@ jobs:
       codecov-name: sparkplugb-interop
       go-versions: '["1.27"]'
       test-exclude-regex: "(/tests($|/))"
+      golangci-lint-version: v2.15.0
     secrets: inherit
