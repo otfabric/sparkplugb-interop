@@ -58,6 +58,20 @@ services:
       retries: 15
       start_period: 15s
 
+  nanomq:
+    <<: *broker
+    image: emqx/nanomq:0.21
+    volumes:
+      - ./brokers/nanomq/nanomq.conf:/etc/nanomq.conf:ro
+    ports:
+      - "127.0.0.1:1886:1883/tcp"
+    healthcheck:
+      test: ["CMD-SHELL", "nanomq_cli conn --url mqtt-tcp://127.0.0.1:1883 -V 4 2>/dev/null && exit 0 || exit 1"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
 networks:
   sparkplugb-interop:
     driver: bridge

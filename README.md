@@ -14,7 +14,8 @@ sparkplugb-interop
 ├── brokers/          MQTT broker configurations
 │   ├── mosquitto/    Eclipse Mosquitto (MQTT 3.1.1 + 5.0)
 │   ├── hivemq-ce/    HiveMQ Community Edition
-│   └── emqx/         EMQX
+│   ├── emqx/         EMQX
+│   └── nanomq/       NanoMQ
 ├── adapters/         Independent Sparkplug implementations
 │   └── tahu/         Eclipse Tahu (Java reference)
 ├── fixtures/         Shared test payloads and scenarios
@@ -41,6 +42,7 @@ docker compose --profile test up --abort-on-container-exit
 | Mosquitto | ✓          | ✓        | 1883  |
 | HiveMQ CE | ✓          | ✓        | 1884  |
 | EMQX      | ✓          | ✓        | 1885  |
+| NanoMQ    | ✓          | ✓        | 1886  |
 
 All brokers are configured for anonymous access on loopback only. These are
 test brokers and must not be exposed to any other network.

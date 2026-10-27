@@ -5,6 +5,7 @@ brokers:
   mosquitto: "2.0.21"
   hivemq-ce: "2024.12"
   emqx: "5.8.6"
+  nanomq: "0.21"
 
 adapters:
   tahu:
