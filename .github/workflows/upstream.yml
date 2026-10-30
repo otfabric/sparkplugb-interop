@@ -101,6 +101,10 @@ jobs:
           name: ${{ matrix.name }}
           pinned: ${{ steps.resolve.outputs.pin }}
           latest: ${{ steps.resolve.outputs.latest }}
+          # A broker candidate tests every pinned adapter: any adapter or pin change re-tests it.
+          cache-paths: >-
+            ${{ steps.resolve.outputs.kind == 'broker' && 'adapters versions.yaml Makefile scripts tests'
+            || 'adapters/{name} Makefile scripts tests' }}
           # A forced run always tests again.
           cache-salt: ${{ inputs.force && github.run_id || 'v1' }}
           result-pattern: '^\[interop\] [0-9]+ passed'
