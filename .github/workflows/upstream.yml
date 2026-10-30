@@ -18,7 +18,7 @@ run-name: "Upstream check (${{ github.event_name }})"
 # runs the cross-stack self-test of the pinned adapters. The known bugs of the
 # pinned version (tests/known-bugs.tsv) apply to the candidate, so it fails
 # only on what is new, and reports a known bug that is gone as stale.
-# Shared steps: https://github.com/otfabric/.github/tree/main/actions
+# Shared steps: https://github.com/otfabric/.github/tree/main/actions.1.1
 on:
   schedule:
     - cron: "55 0 * * *"
@@ -54,7 +54,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
-      - uses: otfabric/.github/actions/upstream-images@v2.1.0
+      - uses: otfabric/.github/actions/upstream-images@v2.1.0.1.1
 
   names:
     name: Upstreams
@@ -98,7 +98,7 @@ jobs:
       - name: Self-test the latest release
         id: test
         if: steps.resolve.outputs.update == 'yes' || (inputs.force && steps.resolve.outcome == 'success')
-        uses: otfabric/.github/actions/upstream-candidate@v2.1.0
+        uses: otfabric/.github/actions/upstream-candidate@v2.1.0.1.1
         with:
           name: ${{ matrix.name }}
           pinned: ${{ steps.resolve.outputs.pin }}
@@ -117,7 +117,7 @@ jobs:
 
       - name: Table row
         if: always()
-        uses: otfabric/.github/actions/upstream-row@v2.1.0
+        uses: otfabric/.github/actions/upstream-row@v2.1.0.1.1
         with:
           component: ${{ matrix.name }}
           kind: ${{ steps.resolve.outputs.kind == 'broker' && 'broker' || 'library' }}
@@ -141,7 +141,7 @@ jobs:
       contents: read
       issues: write
     steps:
-      - uses: otfabric/.github/actions/upstream-report@v2.1.0
+      - uses: otfabric/.github/actions/upstream-report@v2.1.0.1.1
         with:
           needs: ${{ toJSON(needs) }}
           # A run limited to some names is incomplete: it must not close the issue.
