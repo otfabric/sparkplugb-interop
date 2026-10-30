@@ -8,8 +8,9 @@ Run the self-tests with REPORT_DIR set to keep every document:
     REPORT_DIR=reports make smoke interop
     python3 scripts/validate-documents.py reports
 
-capabilities-*.json is a capability document, call-*.json a call result and
-every line of *.host.jsonl an event of a host. Needs the jsonschema package.
+results.json is an interop-result-v1 document, capabilities-*.json a capability
+document, call-*.json a call result and every line of *.host.jsonl an event of
+a host. Needs the jsonschema package.
 """
 
 import json
@@ -41,6 +42,7 @@ def main(argv):
         print(__doc__, file=sys.stderr)
         return 2
     kinds = {
+        "interop results": (validator("interop-result-v1.schema.json"), "results.json"),
         "capabilities": (validator("capabilities.schema.json"), "capabilities-*.json"),
         "call results": (validator("call-result.schema.json"), "call-*.json"),
     }

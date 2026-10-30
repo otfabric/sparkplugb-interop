@@ -100,6 +100,10 @@ print-fixture        the fixture baked into the image
 Lines; `call` returns a result document. Both are specified by JSON Schemas
 in [schemas/](schemas/).
 
+`make documents` also writes `reports/results.json`, the organisation's
+[interop-result-v1](schemas/interop-result-v1.schema.json). Only `pass` counts as passing: a run with
+no pass, or with a known bug that no longer reproduces, fails.
+
 ## Using the images from a library's tests
 
 A consumer needs Docker, the image references and its own test code. It does

@@ -44,7 +44,7 @@ export REGISTRY VERSION BROKER_REGISTRY
 
 # image-% and smoke-% are pattern rules, which make ignores for .PHONY
 # targets: they depend on FORCE instead.
-.PHONY: help all ci validate documents lint images smoke interop interop-brokers buildx publish \
+.PHONY: help all ci validate unittests documents lint images smoke interop interop-brokers buildx publish \
         buildx-setup publish-arch publish-manifest digests capabilities lock-pysparkplug upstream clean FORCE
 FORCE:
 
@@ -59,7 +59,7 @@ ci: validate lint images documents ## Full local CI: validate, lint, build, smok
 
 # ── Validation ───────────────────────────────────────────────────────────────
 
-validate: ## Validate every fixture against the schema and the cross-field rules; check versions.yaml and RELEASE.md
+validate: unittests ## Validate every fixture against the schema and the cross-field rules; check versions.yaml and RELEASE.md
 	@scripts/check-versions.sh
 	@scripts/release-notes.sh > /dev/null && echo "ok   RELEASE.md has the notes of interop_version"
 	@echo "Validating fixtures..."
@@ -70,6 +70,9 @@ validate: ## Validate every fixture against the schema and the cross-field rules
 		$(RETRY) docker run --rm -v "$(CURDIR):/work:ro" -w /work $(TOOLS_REGISTRY)/library/python:3.12-slim \
 			sh -c 'pip install -q --root-user-action=ignore jsonschema && python scripts/validate-fixtures.py --require-schema'; \
 	fi
+
+unittests: ## Unit tests of the result scripts
+	@python3 -m unittest discover -q -s scripts -p 'test_*.py'
 
 documents: ## Run the self-tests keeping every document, and validate them against schemas/
 	@rm -rf reports && mkdir -p reports
@@ -118,7 +121,7 @@ interop: ## Cross-stack self-test on BROKER (default mosquitto): every host agai
 	@scripts/interop.sh $(ADAPTERS)
 
 interop-brokers: ## Cross-stack self-test on every broker of BROKERS
-	@for b in $(BROKERS); do echo "== broker $$b"; BROKER=$$b scripts/interop.sh $(ADAPTERS) || exit 1; done
+	@for b in $(BROKERS); do echo "== broker $$b"; BROKER=$$b REPORT_DIR=$${REPORT_DIR:+$$REPORT_DIR/$$b} scripts/interop.sh $(ADAPTERS) || exit 1; done
 
 # ── Upstream candidates (the Upstream workflow) ───────────────────────────────
 # Self-tests another upstream release than the pin; the pins are untouched.
