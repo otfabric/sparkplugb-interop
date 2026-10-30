@@ -197,12 +197,14 @@ several topics (NBIRTH, DBIRTH per device, NDATA, DDATA per device), and
 `seq` is what orders them. NanoMQ 0.25.7 and HiveMQ CE 2026.5 deliver them,
 in some runs, out of publishing order: a DBIRTH before its NBIRTH, a DDATA
 before an earlier NDATA. The specification has the host wait a reorder
-timeout for the missing message before it requests a rebirth. The srad and
-sparkplughost hosts resequence by `seq` once a node is born, but not across
-its NBIRTH: sparkplughost clears its buffer when the NBIRTH arrives, so a
-DBIRTH delivered before it is lost, and srad requests a rebirth for a message
-from a node it does not know yet. pysparkplug has no host application of its
-own; the adapter's host applies messages in arrival order. Each takes the gap
+timeout for the missing message before it requests a rebirth. The
+sparkplughost host resequences by `seq` once a node is born, but not across
+its NBIRTH: it clears its buffer when the NBIRTH arrives, so a DBIRTH
+delivered before it is lost. The adapter runs srad's host on `AppEventLoop`,
+which hands messages over in arrival order (srad's `Resequencer` serves
+`generic_app` only), and checks `seq` itself, so it requests a rebirth for a
+message from a node it does not know yet. pysparkplug has no host application
+of its own; the adapter's host applies messages in arrival order. Each takes the gap
 for a lost message and requests a rebirth, or misreads data for which it has
 no birth yet. Mosquitto and EMQX kept the order in every
 run. The self-test compares messages as a set ordered by `seq`, and lists
