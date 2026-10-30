@@ -1,0 +1,160 @@
+name: Upstream
+run-name: "Upstream check (${{ github.event_name }})"
+
+# Daily check of every pin against the latest upstream: the release of every
+# adapter's library (Maven Central, PyPI, NuGet, crates.io, npm, the Go module
+# proxy) and of every broker (Docker Hub), both resolved by scripts/upstream.py,
+# and the digest of every base image. Each one that is newer than its pin is
+# self-tested (once per pin -> latest pair; later runs reuse that result). The
+# table goes to the Job Summary and to the issue "Upstream releases: pins
+# behind the latest", which is opened or updated (with a comment when a new
+# version shows up) and closed once every pin is current. Pins (Dockerfiles,
+# lock files, versions.yaml) are never changed here: a bump is a reviewed
+# change.
+#
+# A candidate is tested like a release: an adapter is built on the new
+# version (its build files locked again in a copy of the checkout), smoke
+# tested and cross-stack tested against the pinned other adapters; a broker
+# runs the cross-stack self-test of the pinned adapters. The known bugs of the
+# pinned version (tests/known-bugs.tsv) apply to the candidate, so it fails
+# only on what is new, and reports a known bug that is gone as stale.
+# Shared steps: https://github.com/otfabric/.github/tree/main/actions
+on:
+  schedule:
+    - cron: "55 0 * * *"
+  workflow_dispatch:
+    inputs:
+      only:
+        description: "Adapters and brokers to check, space separated (empty: all; the issue is then left alone)"
+        required: false
+        default: ""
+      force:
+        description: "Self-test even when the pin is the latest release (checks the pipeline)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: upstream
+  cancel-in-progress: false
+
+env:
+  # As ci.yml: base images, brokers and tooling come from Google's mirror of
+  # Docker Hub, with Docker Hub as the fallback for a manifest it lacks.
+  BASE_REGISTRY: mirror.gcr.io/library
+  BROKER_REGISTRY: mirror.gcr.io
+  TOOLS_REGISTRY: mirror.gcr.io
+
+jobs:
+  images:
+    name: Base images
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: otfabric/.github/actions/upstream-images@main
+
+  names:
+    name: Upstreams
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      names: ${{ steps.names.outputs.names }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: names
+        env:
+          ONLY: ${{ inputs.only }}
+        run: |
+          all=$(python3 scripts/upstream.py --names)
+          if [ -n "${ONLY}" ]; then
+            names=$(jq -c --arg only "${ONLY}" '[.[] | select(. as $n | $only | split(" ") | index($n))]' <<<"${all}")
+          else
+            names="${all}"
+          fi
+          [ "${names}" != "[]" ] || { echo "::error::no adapter or broker named '${ONLY}'"; exit 1; }
+          echo "names=${names}" >> "$GITHUB_OUTPUT"
+
+  candidate:
+    name: ${{ matrix.name }}
+    needs: names
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        name: ${{ fromJSON(needs.names.outputs.names) }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Resolve the pin against upstream
+        id: resolve
+        run: python3 scripts/upstream.py "${{ matrix.name }}" | tee -a "$GITHUB_OUTPUT"
+
+      - name: Self-test the latest release
+        id: test
+        if: steps.resolve.outputs.update == 'yes' || (inputs.force && steps.resolve.outcome == 'success')
+        uses: otfabric/.github/actions/upstream-candidate@main
+        with:
+          name: ${{ matrix.name }}
+          pinned: ${{ steps.resolve.outputs.pin }}
+          latest: ${{ steps.resolve.outputs.latest }}
+          # A forced run always tests again.
+          cache-salt: ${{ inputs.force && github.run_id || 'v1' }}
+          result-pattern: '^\[interop\] [0-9]+ passed'
+          command: >-
+            make images &&
+            make "candidate-${{ matrix.name }}"
+            CANDIDATE="${{ steps.resolve.outputs.kind == 'broker' && steps.resolve.outputs.image || steps.resolve.outputs.latest }}"
+
+      - name: Table row
+        if: always()
+        uses: otfabric/.github/actions/upstream-row@main
+        with:
+          component: ${{ matrix.name }}
+          kind: ${{ steps.resolve.outputs.kind == 'broker' && 'broker' || 'library' }}
+          source: ${{ steps.resolve.outputs.source }}
+          pinned: ${{ steps.resolve.outputs.pin }}
+          latest: ${{ steps.resolve.outputs.latest }}
+          update: ${{ steps.resolve.outputs.update }}
+          detail: ${{ steps.resolve.outcome == 'failure' && 'upstream lookup failed (see the job log)' || '' }}
+          test-outcome: ${{ steps.test.outputs.outcome }}
+          test-result: ${{ steps.test.outputs.result }}
+          test-cached: ${{ steps.test.outputs.cached }}
+          # The known bugs of the pin, which the candidate is tested with.
+          known: ${{ steps.test.outputs.outcome && steps.resolve.outputs.known || '' }}
+
+  report:
+    name: Report
+    runs-on: ubuntu-latest
+    needs: [images, names, candidate]
+    if: always()
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: otfabric/.github/actions/upstream-report@main
+        with:
+          needs: ${{ toJSON(needs) }}
+          # A run limited to some names is incomplete: it must not close the issue.
+          issue: ${{ inputs.only == '' }}
+          notes: |
+            ### To update
+
+            - **Library:** the pin is in the adapter's Dockerfile, its build files and
+              `versions.yaml` (`scripts/check-versions.sh` checks they agree):
+              tahu `TAHU_VERSION`, `pom.xml`, `dependencies.sha256`; pysparkplug
+              `PYSPARKPLUG_VERSION`, `requirements.in`, `requirements.txt` (`make lock-pysparkplug`);
+              sparkplugnet `SPARKPLUGNET_VERSION`, `SparkplugbInterop.csproj`, `packages.lock.json`;
+              srad `SRAD_VERSION` (and licence checksums), `Cargo.toml`, `Cargo.lock`; tahu-js
+              `SPARKPLUG_CLIENT_VERSION`, `package.json`, `package-lock.json`; sparkplughost
+              `SPARKPLUGHOST_VERSION`, `go.mod`, `go.sum`.
+            - **Broker:** the image reference and its digest under `brokers:` in `versions.yaml`.
+            - Reproduce a candidate with `make images` then `make candidate-<name>
+              CANDIDATE=<version or image>`; a `failure` needs the log of the run first. The known
+              bugs of the pin apply to the candidate: a *stale entry in tests/known-bugs.tsv* is
+              good news (the bug is fixed), drop the entry when moving the pin.
+            - **Base image:** replace the digest in every file that pins it.
+            - Record the change in `docs/COMPATIBILITY.md` and `RELEASE.md`.

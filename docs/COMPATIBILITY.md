@@ -33,17 +33,20 @@ The base images are pinned by multi-arch index digest. Every pin is in
 [versions.yaml](../versions.yaml), and `scripts/check-versions.sh` checks that
 it matches the Dockerfiles and the Makefile.
 
-The **Upstream candidates** workflow (`.github/workflows/candidate.yml`,
-weekly and on demand) resolves the latest release of each adapter's library
-(Maven Central, PyPI, NuGet, crates.io, npm, the Go module proxy) and of each
+The **Upstream** workflow (`.github/workflows/upstream.yml`, daily and on
+demand) resolves the latest release of each adapter's library (Maven
+Central, PyPI, NuGet, crates.io, npm, the Go module proxy) and of each
 broker (Docker Hub). For each one newer than its pin it builds the adapter on
 it, its lock file regenerated in a copy of the checkout, and runs the smoke
 and cross-stack self-tests against the pinned other adapters; a newer broker
 runs the cross-stack self-test of the pinned adapters. The known bugs of the
 pinned version apply to the candidate, so it fails only on what is new and
-reports a known bug that is gone as stale. It writes a pin-vs-latest decision
-table to its job summary and never changes a pin. `make candidate-<name>
-CANDIDATE=<version or image>` runs the same locally.
+reports a known bug that is gone as stale. A candidate is tested once per pin
+and release. It also checks the digest of every base image, writes a
+pin-vs-latest table to its job summary, keeps the issue "Upstream releases:
+pins behind the latest" open while a pin is behind, and never changes a
+pin. `make candidate-<name> CANDIDATE=<version or image>` runs the same
+locally.
 
 ## Cross-stack matrix
 

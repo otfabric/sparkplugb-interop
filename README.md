@@ -169,12 +169,14 @@ make candidate-srad CANDIDATE=0.6.0   # self-test an adapter on another upstream
 make candidate-nanomq CANDIDATE=emqx/nanomq:0.25.8   # the pinned adapters on another broker release
 ```
 
-The **Upstream candidates** workflow (Actions → Upstream candidates → Run
-workflow; also every Monday) resolves the latest release of Eclipse Tahu,
-pysparkplug, SparkplugNet, srad, the Tahu sparkplug-client, sparkplughost
-and the four brokers, self-tests every one that is newer than its pin, and
-reports pin versus latest in its job summary. Its `force` input self-tests
-even when the pin is the latest; `only` limits it to some names.
+The **Upstream** workflow (Actions → Upstream → Run workflow; also daily)
+resolves the latest release of Eclipse Tahu, pysparkplug, SparkplugNet, srad,
+the Tahu sparkplug-client, sparkplughost and the four brokers, and the digest
+of every base image. It self-tests every release that is newer than its pin
+(once per pin and release), reports pin versus latest in its job summary and
+keeps the issue "Upstream releases: pins behind the latest" open while a pin
+is behind. Its `force` input self-tests even when the pin is the latest;
+`only` limits it to some names (and leaves the issue alone).
 
 `make smoke ADAPTERS=srad` and `make interop ADAPTERS="tahu srad"` narrow what
 is run. See [CONTRIBUTING.md](CONTRIBUTING.md) for adding an adapter, a

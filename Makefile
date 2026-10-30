@@ -120,12 +120,12 @@ interop: ## Cross-stack self-test on BROKER (default mosquitto): every host agai
 interop-brokers: ## Cross-stack self-test on every broker of BROKERS
 	@for b in $(BROKERS); do echo "== broker $$b"; BROKER=$$b scripts/interop.sh $(ADAPTERS) || exit 1; done
 
-# ── Upstream candidates ───────────────────────────────────────────────────────
+# ── Upstream candidates (the Upstream workflow) ───────────────────────────────
 # Self-tests another upstream release than the pin; the pins are untouched.
 # An adapter is built on library version CANDIDATE (its build files locked
 # again in a copy of the repository); a broker candidate is a Docker Hub
 # image. Needs the pinned images: make images. scripts/upstream.py prints the
-# latest releases; .github/workflows/candidate.yml runs this every week.
+# latest releases; .github/workflows/upstream.yml runs this every day.
 
 CANDIDATE ?=
 
