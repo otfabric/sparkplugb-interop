@@ -91,6 +91,8 @@ jobs:
 
       - name: Resolve the pin against upstream
         id: resolve
+        # bash: -eo pipefail, so a failing lookup fails this job too.
+        shell: bash
         run: python3 scripts/upstream.py "${{ matrix.name }}" | tee -a "$GITHUB_OUTPUT"
 
       - name: Self-test the latest release
