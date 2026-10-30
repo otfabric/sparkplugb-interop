@@ -27,9 +27,47 @@ FAIL=0
 SKIPPED=0
 
 log()  { echo "[$(basename "$0" .sh)] $*" >&2; }
-ok()   { PASS=$((PASS + 1)); [[ -n "${VERBOSE:-}" ]] && log "ok: $*"; return 0; }
-fail() { FAIL=$((FAIL + 1)); log "FAIL: $*"; return 0; }
-skip() { SKIPPED=$((SKIPPED + 1)); [[ -n "${VERBOSE:-}" ]] && log "skip: $*"; return 0; }
+ok()   { PASS=$((PASS + 1)); record pass; [[ -n "${VERBOSE:-}" ]] && log "ok: $*"; return 0; }
+fail() { FAIL=$((FAIL + 1)); record fail "$*"; log "FAIL: $*"; return 0; }
+
+# ---- results.json (scripts/results-from-log.py) ----
+# scripts/interop.sh sets RESULT_LOG. While a scenario is set, ok, fail and the
+# others append one tab-separated line per result: the stable ID, the outcome,
+# the roles as "role=name" words, the milliseconds, the reason, the known bug.
+now_ms() { if [[ -n "${EPOCHREALTIME:-}" ]]; then local t="${EPOCHREALTIME/[.,]/}"; echo "${t%???}"; else echo "$((SECONDS * 1000))"; fi; }
+
+# scenario <stable id> <role=name>...: what the next result is about.
+scenario() { SCENARIO_ID="$1"; shift; SCENARIO_ROLES="$*"; SCENARIO_START=$(now_ms); }
+
+# record <outcome> [reason] [known bug]
+record() {
+    [[ -n "${RESULT_LOG:-}" && -n "${SCENARIO_ID:-}" ]] || return 0
+    local reason="${2:-}"
+    reason="${reason//[$'\t\n']/ }"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "${SCENARIO_ID}" "$1" "${SCENARIO_ROLES}" "$(( $(now_ms) - SCENARIO_START ))" "${reason}" "${3:-}" >> "${RESULT_LOG}"
+}
+
+# write_results <work dir> <started> <reproduce command>: with REPORT_DIR set,
+# results.json. A run that the verdict refuses counts as a failure.
+write_results() {
+    SCENARIO_ID=""
+    RESULTS_WRITTEN=1
+    [[ -n "${REPORT_DIR:-}" ]] || return 0
+    mkdir -p "${REPORT_DIR}"
+    python3 "${SCRIPT_DIR}/results-from-log.py" "$1" "${REPORT_DIR}/results.json" "$2" "$3" || fail "results.json: the run failed (see above)"
+}
+
+# abort_results <work dir> <started> <reproduce command>: from the EXIT trap. A
+# run that stopped early is an infrastructure error, not a product failure.
+abort_results() {
+    [[ "${RESULTS_WRITTEN:-}" == 1 ]] && return 0
+    scenario harness.stopped "harness=$(basename "$0" .sh)"
+    record infra-error "the harness stopped before the run was complete"
+    write_results "$@"
+}
+skip() { SKIPPED=$((SKIPPED + 1)); record unsupported "$*"; [[ -n "${VERBOSE:-}" ]] && log "skip: $*"; return 0; }
+# infra <label>: the environment failed, not a stack; it fails the run all the same.
+infra() { FAIL=$((FAIL + 1)); record infra-error "$*"; log "FAIL: $*"; return 0; }
 
 # check <label> <command...>: ok when the command succeeds.
 check() { local label="$1"; shift; if "$@" >/dev/null 2>&1; then ok "${label}"; else fail "${label}"; fi; }
@@ -174,5 +212,6 @@ finish() {
     [[ "${KNOWN}" -gt 0 ]] && extra="${extra}, ${KNOWN} known upstream bugs"
     [[ "${SKIPPED}" -gt 0 ]] && extra="${extra}, ${SKIPPED} skipped (capability not declared)"
     log "${PASS} passed, ${FAIL} failed${extra}"
+    [[ "${PASS}" -gt 0 ]] || { log "no test passed: this run proves nothing"; return 1; }
     [[ "${FAIL}" -eq 0 ]]
 }

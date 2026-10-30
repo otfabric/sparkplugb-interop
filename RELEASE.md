@@ -23,6 +23,25 @@ Tags are immutable. A fix is a new version.
 
 ---
 
+## v0.2.0
+
+**Date:** 2026-10-30
+
+**Previous release:** v0.1.0
+
+## Summary
+
+Self-test results as the organisation's interop-result-v1.
+
+## Changes
+
+### Added
+
+- **`reports/results.json`** ([interop-result-v1](schemas/interop-result-v1.schema.json)): `scripts/interop.sh` writes it when `REPORT_DIR` is set, with stable IDs `<fixture>.<step>`, the broker and the digests. `make interop-brokers` writes one per broker, under `$REPORT_DIR/<broker>/`. Only `pass` counts as passing; a run with no pass, or with a waiver that no longer reproduces, fails. Existing reports keep their shape. An intermittent entry that did not show is not listed as a waiver.
+- **`tests/known-bugs.tsv`** has a ninth column, the evidence URL pinned to the upstream version.
+
+---
+
 ## v0.1.0
 
 **Date:** 2026-10-27

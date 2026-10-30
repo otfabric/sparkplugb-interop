@@ -14,7 +14,8 @@
 #
 # Environment: REGISTRY, VERSION, BROKER, BROKER_IMAGE, KNOWN_BUGS_AS,
 #              VERBOSE=1, REPORT_DIR (keeps the normalized host messages of
-#              every pairing), EVENT_TIMEOUT, WAIT_TIMEOUT,
+#              every pairing, and writes results.json, interop-result-v1: only
+#              a pass counts as passing), EVENT_TIMEOUT, WAIT_TIMEOUT,
 #              CONNECT_TIMEOUT_MS (MQTT connection of the roles, 45000).
 
 set -uo pipefail
@@ -25,7 +26,11 @@ source "${SCRIPT_DIR}/lib.sh"
 [[ $# -ge 1 ]] || { echo "usage: interop.sh <adapter...>" >&2; exit 2; }
 ADAPTERS=("$@")
 require_tools
-trap cleanup EXIT
+WORK=$(mktemp -d)
+STARTED=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+RESULT_LOG="${WORK}/results.log"
+REPRODUCE="REPORT_DIR=reports VERSION=${VERSION} BROKER=${BROKER} scripts/interop.sh ${ADAPTERS[*]}"
+trap 'abort_results "${WORK}" "${STARTED}" "${REPRODUCE}"; rm -rf "${WORK}"; cleanup' EXIT
 network_up
 HOST_ID="interop-host"
 
@@ -34,7 +39,9 @@ for a in "${ADAPTERS[@]}"; do
     CAPS[$a]=$(docker run --rm "$(image_of "$a")" print-capabilities 2>/dev/null) \
         || { log "cannot read the capabilities of $a"; exit 1; }
     VERSIONS[$a]=$(jq -r '.upstream.version' <<<"${CAPS[$a]}")
+    printf '%s\t%s\t%s\n' "$a" "${VERSIONS[$a]}" "$(image_of "$a")" >> "${WORK}/implementations.tsv"
 done
+printf '%s\t-\t%s\n' "${BROKER}" "$(broker_image "${BROKER}")" >> "${WORK}/implementations.tsv"
 
 has() { jq -e "$2" <<<"${CAPS[$1]}" >/dev/null 2>&1; }  # has <adapter> <jq predicate>
 
@@ -52,10 +59,10 @@ has() { jq -e "$2" <<<"${CAPS[$1]}" >/dev/null 2>&1; }  # has <adapter> <jq pred
 declare -A KNOWN_USED KNOWN_AS
 for kv in ${KNOWN_BUGS_AS:-}; do KNOWN_AS[${kv%%=*}]="${kv#*=}"; done
 KNOWN_LINES=()
-while IFS=$'\t' read -r k_impl k_version k_role k_peer k_broker k_fixture k_step k_what; do
+while IFS=$'\t' read -r k_impl k_version k_role k_peer k_broker k_fixture k_step k_what k_evidence; do
     [[ -z "${k_impl}" || "${k_impl}" == \#* || "${k_impl}" == implementation ]] && continue
     case "${k_role}" in edge|host) ;; *) log "tests/known-bugs.tsv: role '${k_role}' is not edge or host"; exit 1 ;; esac
-    [[ -n "${k_what}" ]] || { log "tests/known-bugs.tsv: entry for ${k_impl} has fewer than 8 columns"; exit 1; }
+    [[ -n "${k_evidence}" ]] || { log "tests/known-bugs.tsv: entry for ${k_impl} has fewer than 9 columns"; exit 1; }
     KNOWN_LINES+=("${k_impl}"$'\t'"${k_version}"$'\t'"${k_role}"$'\t'"${k_peer}"$'\t'"${k_broker}"$'\t'"${k_fixture}"$'\t'"${k_step}"$'\t'"${k_what}")
 done < "${ROOT}/tests/known-bugs.tsv"
 
@@ -74,6 +81,9 @@ known_bug() {
     return 1
 }
 
+# entry_key <entry>: what names it in results.json: the columns before the description.
+entry_key() { local key="${1%$'\t'*}"; printf '%s\n' "${key//$'\t'/ }"; }
+
 # outcome <passed 0|1> <label> <step>
 outcome() {
     local passed="$1" label="$2" step="$3" entry
@@ -83,7 +93,8 @@ outcome() {
         ok "${label}"
     elif [[ -n "${entry}" ]]; then
         KNOWN_USED["${entry}"]+=fail
-        KNOWN=$((KNOWN + 1)); log "known bug: ${label} (${entry##*$'\t'})"
+        KNOWN=$((KNOWN + 1)); record known-difference "${entry##*$'\t'}" "$(entry_key "${entry}")"
+        log "known bug: ${label} (${entry##*$'\t'})"
     else
         fail "${label}"
     fi
@@ -132,13 +143,17 @@ apply_update() {
 EXPECTED=()
 expect() { local l; while IFS= read -r l; do [[ -n "$l" ]] && EXPECTED+=("$l"); done <<<"$1"; }
 
-# compare <label> <step>: waits until the host has as many messages from the
+# at <stable id>: the scenario, within the fixture, of the current pairing.
+at() { scenario "${FIXTURE}.$1" "host=${HA}" "edge=${EA}" "broker=${BROKER}"; }
+
+# compare <label> <step> [id]: waits until the host has as many messages from the
 # edge as expected, then compares them all, normalized. The comparison is of
 # the messages as a set: each carries its seq, which is what orders Sparkplug
 # messages, and MQTT orders messages per topic only (NanoMQ does deliver
 # messages of different topics out of publishing order).
 compare() {
     local label="$1" step="$2" got want n=${#EXPECTED[@]}
+    at "${3:-$2}"
     got=$(wait_events "${H}" ".event == \"message\" and .edgeNode == \"${EDGE_NODE}\"" "${n}" \
         | jq -c --slurpfile fx "${FIXTURE_FILE}" "\$fx[0] as \$fx | ${NORMALIZE}" | head -n "${n}" | LC_ALL=C sort)
     want=$(printf '%s\n' "${EXPECTED[@]}" | jq -c 'walk(if type == "number" then . + 0 else . end)' | LC_ALL=C sort)
@@ -181,7 +196,8 @@ pairing() {  # pairing <host adapter> <edge adapter> <fixture>
     STATE=$(jq -c . "${FIXTURE_FILE}"); OFFLINE='[]'; EXPECTED=()
     log "${PAIR}"
 
-    if ! start_broker "${BROKER}" "${b}"; then fail "${PAIR}: broker"; return; fi
+    at broker
+    if ! start_broker "${BROKER}" "${b}"; then infra "${PAIR}: broker"; return; fi
     url=$(broker_url "${b}")
     local edge_args=(edge --broker "${url}" --fixture "${FIXTURE}" --edge-node "${EDGE_NODE}")
     local primary=false
@@ -191,14 +207,17 @@ pairing() {  # pairing <host adapter> <edge adapter> <fixture>
     # if the edge waited for its STATE.
     if [[ "${primary}" == true ]]; then start_role "${EA}" "${e}" "${edge_args[@]}"; fi
     start_role "${HA}" "${h}" host --broker "${url}" --host-id "${HOST_ID}"
+    at host-ready
     if ! wait_ready "${h}"; then fail "${PAIR}: host ready"; docker rm -f -v "${b}" "${h}" "${e}" >/dev/null 2>&1; return; fi
     if [[ "${primary}" == false ]]; then start_role "${EA}" "${e}" "${edge_args[@]}"; fi
+    at edge-ready
     if ! wait_ready "${e}"; then fail "${PAIR}: edge ready"; docker rm -f -v "${b}" "${h}" "${e}" >/dev/null 2>&1; return; fi
 
     # 1. Births.
     expect "$(births 0)"
     SEQ=${#EXPECTED[@]}
     compare "births" births
+    at births-bdseq
     local bdseq; bdseq=$(bdseq_of NBIRTH)
     if [[ "${bdseq}" =~ ^[0-9]+$ ]]; then ok "${PAIR}: NBIRTH bdSeq"; else outcome 1 "${PAIR}: NBIRTH bdSeq is ${bdseq:-missing}" births; fi
 
@@ -206,10 +225,12 @@ pairing() {  # pairing <host adapter> <edge adapter> <fixture>
     if has "${EA}" '.roles.edge.features.aliases' && ! has "${HA}" '.roles.host.features.aliasResolution'; then alias_ok=false; fi
 
     # 2. Data updates.
+    at update
     if has "${EA}" '.roles.edge.calls | index("publish-data")' && [[ "${alias_ok}" == true ]]; then
         local i n out doc
         n=$(jq '.updates | length' "${FIXTURE_FILE}")
         for ((i = 0; i < n; i++)); do
+            at "update-${i}-call"
             doc=$(call "${E}" publish-data "{\"update\": ${i}}")
             jq -e '.ok' <<<"${doc}" >/dev/null 2>&1 || fail "${PAIR}: call publish-data ${i}: ${doc}"
             apply_update "${i}"; out="${UPDATE_OUT}"
@@ -220,10 +241,12 @@ pairing() {  # pairing <host adapter> <edge adapter> <fixture>
     else skip "${PAIR}: updates"; fi
 
     # 3. Writes from the host, applied by the edge.
+    at write
     if has "${EA}" '.roles.edge.features.writes' && has "${HA}" '.roles.host.calls | index("send-command")' && [[ "${alias_ok}" == true ]]; then
-        local w scope dev name dt val nv payload applied=0
+        local w scope dev name dt val nv payload metric applied=0
         while IFS=$'\t' read -r scope dev name dt val; do
             [[ -z "${name}" ]] && continue
+            metric="${scope}-${dev}-$(tr -cs 'A-Za-z0-9' '-' <<<"${name}" | tr 'A-Z' 'a-z')"; metric="${metric%-}"
             nv=$(new_value "${dt}" "${val}")
             if [[ "${scope}" == node ]]; then
                 payload=$(jq -cn --arg n "${EDGE_NODE}" --arg m "${name}" --arg dt "${dt}" --argjson v "${nv}" \
@@ -239,28 +262,33 @@ pairing() {  # pairing <host adapter> <edge adapter> <fixture>
                 STATE=$(jq -c --arg d "${dev}" --arg m "${name}" --argjson v "${nv}" \
                     '.devices |= map(if .id == $d then .metrics |= map(if .name == $m then .value = $v else . end) else . end)' <<<"${STATE}")
             fi
+            at "write-${metric}-call"
             w=$(call "${H}" send-command "${payload}")
             jq -e '.ok' <<<"${w}" >/dev/null 2>&1 || fail "${PAIR}: call send-command ${name}: ${w}"
             SEQ=$(( (SEQ + 1) % 256 )); applied=$((applied + 1))
-            compare "write ${name}" "write"
+            compare "write ${name}" write "write-${metric}"
         done < <(jq -r '(.node.metrics[] | select(.writable) | ["node", "-", .name, .datatype, (.value | tojson)]),
                         (.devices[] | .id as $d | .metrics[] | select(.writable) | ["device", $d, .name, .datatype, (.value | tojson)]) | @tsv' "${FIXTURE_FILE}")
         if (( applied > 0 )); then
+            at write-applied
             if wait_events "${E}" '.event == "command" and .applied == true' "${applied}" >/dev/null; then ok "${PAIR}: edge command events"
             else outcome 1 "${PAIR}: edge reports ${applied} applied command events" write; fi
         fi
     else skip "${PAIR}: writes"; fi
 
     # 4. Rebirth requested by the host.
+    at rebirth-command
     if has "${EA}" '.roles.edge.features.rebirthCommand' && has "${HA}" '.roles.host.calls | index("request-rebirth")'; then
         call "${H}" request-rebirth "{\"group\": \"interop\", \"edgeNode\": \"${EDGE_NODE}\"}" >/dev/null
         local out; out=$(births 0); expect "${out}"; SEQ=$(grep -c . <<<"${out}")
         compare "rebirth on request" rebirth-command
+        at rebirth-command-bdseq
         if [[ "$(bdseq_of NBIRTH 2)" == "${bdseq}" ]]; then ok "${PAIR}: rebirth keeps bdSeq"
         else outcome 1 "${PAIR}: rebirth keeps bdSeq ${bdseq} (got $(bdseq_of NBIRTH 2))" rebirth-command; fi
     else skip "${PAIR}: rebirth on request"; fi
 
     # 5. Device death and birth.
+    at device-lifecycle
     local first_dev; first_dev=$(jq -r '.devices[0].id // empty' "${FIXTURE_FILE}")
     if [[ -n "${first_dev}" ]] && has "${EA}" '.roles.edge.calls | index("device-death") and index("device-birth")'; then
         call "${E}" device-death "{\"device\": \"${first_dev}\"}" >/dev/null
@@ -268,6 +296,7 @@ pairing() {  # pairing <host adapter> <edge adapter> <fixture>
         SEQ=$(( (SEQ + 1) % 256 ))
         compare "device death" device-death
         if has "${HA}" '.roles.host.calls | index("nodes")'; then
+            at device-death-tracked
             if host_nodes | jq -e --arg d "${first_dev}" '.online and (.devices[] | select(.device == $d) | .online == false)' >/dev/null 2>&1
             then ok "${PAIR}: host tracks the dead device"; else outcome 1 "${PAIR}: host tracks the dead device: $(host_nodes)" device-death; fi
         fi
@@ -279,6 +308,7 @@ pairing() {  # pairing <host adapter> <edge adapter> <fixture>
     else skip "${PAIR}: device death and birth"; fi
 
     # 6. Rebirth on the edge's own initiative.
+    at rebirth-call
     if has "${EA}" '.roles.edge.calls | index("rebirth")'; then
         call "${E}" rebirth >/dev/null
         local out; out=$(births 0); expect "${out}"; SEQ=$(grep -c . <<<"${out}")
@@ -286,6 +316,7 @@ pairing() {  # pairing <host adapter> <edge adapter> <fixture>
     else skip "${PAIR}: rebirth call"; fi
 
     # 7. What the host tracks.
+    at nodes-online
     if has "${HA}" '.roles.host.calls | index("nodes")'; then
         if host_nodes | jq -e --argjson b "${bdseq:-null}" '.online == true and .bdSeq == $b and ([.devices[].online] | all)' >/dev/null 2>&1
         then ok "${PAIR}: host tracks the node online"; else outcome 1 "${PAIR}: host tracks the node online: $(host_nodes)" nodes; fi
@@ -306,9 +337,11 @@ pairing() {  # pairing <host adapter> <edge adapter> <fixture>
             | jq -c --slurpfile fx "${FIXTURE_FILE}" "\$fx[0] as \$fx | ${NORMALIZE} | select(.type == \"DDEATH\")")"
     fi
     compare "NDEATH on a ${how} stop" "${step}"
+    at "${step}-bdseq"
     if [[ "$(bdseq_of NDEATH)" == "${bdseq}" ]]; then ok "${PAIR}: NDEATH bdSeq matches NBIRTH"
     else outcome 1 "${PAIR}: NDEATH bdSeq $(bdseq_of NDEATH), NBIRTH ${bdseq}" "${step}"; fi
     if has "${HA}" '.roles.host.calls | index("nodes")'; then
+        at nodes-offline
         if host_nodes | jq -e '.online == false' >/dev/null 2>&1; then ok "${PAIR}: host tracks the node offline"
         else outcome 1 "${PAIR}: host tracks the node offline: $(host_nodes)" "${step}"; fi
     fi
@@ -318,19 +351,22 @@ pairing() {  # pairing <host adapter> <edge adapter> <fixture>
     STATE=$(jq -c . "${FIXTURE_FILE}"); OFFLINE='[]'
     local births_before; births_before=$(events "${H}" "select(.event == \"message\" and .edgeNode == \"${EDGE_NODE}\" and .type == \"NBIRTH\")" | wc -l)
     start_role "${EA}" "${e}" "${edge_args[@]}"
+    at edge-restart
     if wait_ready "${e}"; then
         expect "$(births 0)"
-        compare "births after a restart" births
+        compare "births after a restart" births births-restart
         docker kill "${E}" >/dev/null
         expect '{"type":"NDEATH","device":null,"seq":null,"metrics":[]}'
-        compare "NDEATH will after a crash" will
+        compare "NDEATH will after a crash" will will-crash
+        at will-crash-bdseq
         local b2 d2; b2=$(bdseq_of NBIRTH $((births_before + 1))); d2=$(bdseq_of NDEATH "$(events "${H}" "select(.event == \"message\" and .edgeNode == \"${EDGE_NODE}\" and .type == \"NDEATH\")" | wc -l)")
         if [[ -n "${b2}" && "${b2}" == "${d2}" ]]; then ok "${PAIR}: will bdSeq matches NBIRTH"
         else outcome 1 "${PAIR}: will bdSeq ${d2:-missing}, NBIRTH ${b2:-missing}" will; fi
-    else fail "${PAIR}: edge restart"; fi
+    else at edge-restart; fail "${PAIR}: edge restart"; fi
     docker rm -f -v "${E}" >/dev/null 2>&1
 
     # 10. The primary host goes offline: the edge sees it and dies.
+    at primary-host-offline
     if [[ "${primary}" == true ]] && has "${HA}" '.roles.host.features.gracefulOffline'; then
         start_role "${EA}" "${e}" "${edge_args[@]}"
         if wait_ready "${e}"; then
@@ -358,6 +394,7 @@ for HA in "${ADAPTERS[@]}"; do
     for EA in "${ADAPTERS[@]}"; do
         has "${EA}" '.roles.edge.supported' || continue
         for FIXTURE in $(jq -r '.roles.edge.fixtures[]' <<<"${CAPS[$EA]}"); do
+            at pairing
             if [[ ! -f "${ROOT}/fixtures/${FIXTURE}/fixture.json" ]]; then fail "${EA} declares an unknown fixture ${FIXTURE}"; continue; fi
             missing=$(jq -r --argjson caps "${CAPS[$HA]}" '[.node.metrics[], .devices[].metrics[] | .datatype] | unique
                 - $caps.roles.host.datatypes | join(",")' "${ROOT}/fixtures/${FIXTURE}/fixture.json")
@@ -366,14 +403,23 @@ for HA in "${ADAPTERS[@]}"; do
         done
     done
 done
+SCENARIO_ID=""
 (( PAIRS > 0 )) || { log "no pairing: the adapters need at least one host and one edge"; FAIL=$((FAIL + 1)); }
 
 # A known bug that did not fail in a pairing that ran it is stale, unless it
 # is intermittent (its description starts with "Intermittent:").
+# ${WORK}/active: the entries this run can judge; ${WORK}/reproduced: those that
+# showed. An intermittent entry that did not show says nothing either way.
 for entry in "${!KNOWN_USED[@]}"; do
+    if [[ "${KNOWN_USED[$entry]}" == *fail* ]]; then
+        entry_key "${entry}" | tee -a "${WORK}/active" >> "${WORK}/reproduced"
+    elif [[ "${entry##*$'\t'}" != Intermittent:* ]]; then
+        entry_key "${entry}" >> "${WORK}/active"
+    fi
     if [[ "${KNOWN_USED[$entry]}" != *fail* && "${entry##*$'\t'}" != Intermittent:* ]]; then
         fail "stale entry in tests/known-bugs.tsv (every matching step passed): ${entry}"
     fi
 done
 
+write_results "${WORK}" "${STARTED}" "${REPRODUCE}"
 finish
