@@ -14,7 +14,7 @@ them with `print-fixture`.
 | Fixture | What it exercises |
 |---------|-------------------|
 | [`baseline`](../fixtures/baseline/fixture.json) | Node metrics, two devices, aliases, writable metrics on the node and on a device, two updates that touch the node and both devices |
-| [`scalars`](../fixtures/scalars/fixture.json) | One metric of every scalar datatype, at its initial value and at its limits |
+| [`scalars`](../fixtures/scalars/fixture.json) | One metric of every scalar datatype, at its initial value and at its limits. Its negative Int8 and Int16 values show the [two encodings](COMPATIBILITY.md#int8-and-int16-are-encoded-two-ways): the fixture gives the value, and each edge encodes it the way its stack does |
 
 ## Format
 

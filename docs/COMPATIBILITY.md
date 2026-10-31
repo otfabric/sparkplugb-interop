@@ -73,10 +73,10 @@ have the intermittent
 srad edges on NanoMQ the
 [late will](#nanomq-publishes-the-will-after-an-mqtt-5-disconnect).
 
-¹ The pysparkplug host [cannot decode sign-extended Int8 and Int16](#int8-and-int16-are-encoded-two-ways) (scalars).
+¹ The pysparkplug host decodes [width-sized Int8 and Int16 only](#int8-and-int16-are-encoded-two-ways), a specification ambiguity (scalars).
 ² The pysparkplug edge [puts bdSeq + 1 in its NDEATH](#pysparkplug-ndeath-carries-the-next-bdseq).
 ³ [Metrics without a datatype](#metrics-without-a-datatype) in the commands of srad and Tahu and in srad's NDEATH, which pysparkplug and SparkplugNet cannot decode.
-⁴ The SparkplugNet host [keeps dead nodes and devices online](#sparkplugnet-host-keeps-dead-nodes-online), decodes Int8 and Int16 only sign-extended, and [sets `seq` in commands](#commands-carry-no-seq).
+⁴ The SparkplugNet host [keeps dead nodes and devices online](#sparkplugnet-host-keeps-dead-nodes-online), decodes [sign-extended Int8 and Int16 only](#int8-and-int16-are-encoded-two-ways), a specification ambiguity, and [sets `seq` in commands](#commands-carry-no-seq).
 ⁵ The SparkplugNet edge [drops device writes](#sparkplugnet-edge-drops-device-writes).
 ⁶ tahu-js [cannot decode commands without a datatype](#metrics-without-a-datatype) (from srad and Tahu).
 ⁷ The Tahu host [rejects a DBIRTH that reuses aliases](#tahu-host-rejects-a-dbirth-that-reuses-aliases).
@@ -94,23 +94,60 @@ each broker (72 pairings per broker, both fixtures):
 
 The difference between brokers is the intermittent findings.
 
+These counts predate the third update of the scalars fixture (v0.2.2), which adds
+steps to each scalars pairing.
+
 ## Findings
 
 ### Int8 and Int16 are encoded two ways
 
-Sparkplug carries Int8, Int16 and Int32 in the protobuf field `int_value`,
-which is `uint32`, and does not say how a negative value goes in. Tahu (Java
-and JavaScript) and SparkplugNet sign-extend to 32 bits (-8 is
-`0xFFFFFFF8`); pysparkplug and srad encode the width (-8 is `0xF8`). Tahu
-truncates on decode, so it reads both.
+**Classification: specification ambiguity and interoperability
+incompatibility, not a demonstrated violation of the specification.** No stack
+below is non-compliant for the form it uses. The entries in
+`tests/known-bugs.tsv` start with "Specification ambiguity:": they are known
+differences between stacks, not bugs.
 
-- pysparkplug 0.6.1 decodes only the width-sized form: a sign-extended value
-  raises `OverflowError` and the whole NBIRTH is dropped.
-- SparkplugNet 1.4.1 decodes only the sign-extended form: a width-sized value
-  raises `OverflowException` and the whole payload is dropped.
-- srad and sparkplughost decode both.
+Specification ambiguity: negative Int8/Int16 encoding. Sparkplug B defines
+Metric.int_value as protobuf uint32 but does not explicitly prescribe whether
+negative Int8 and Int16 values must be sign-extended to 32 bits or represented
+using their native bit width. Eclipse Tahu and SparkplugNet use sign-extension,
+whereas pysparkplug and srad use width-sized representations. Both encodings
+preserve the original two's-complement bit pattern, but implementations differ
+in decoding behavior, resulting in interoperability failures. OT Fabric follows
+the Eclipse Tahu convention when encoding and accepts both representations when
+decoding.
 
-The scalars fixture has negative Int8 and Int16 values to show it.
+Sign-extended, -8 is `0xFFFFFFF8`; width-sized, it is `0xF8` for an Int8 and
+`0xFFF8` for an Int16. For a value that is not negative the two coincide. Tahu
+sign-extension is the de facto reference: the Sparkplug TCK's encoder does the
+same.
+
+| Stack | Encodes | Decodes |
+|-------|---------|---------|
+| Eclipse Tahu 1.0.21 (Java) | sign-extended | both: truncates to the width |
+| sparkplug-payload (tahu-js) 3.2.4 | sign-extended | sign-extended only: a width-sized Int8 of -8 reads as 248 |
+| SparkplugNet 1.4.1 | sign-extended | sign-extended only: a width-sized value raises `OverflowException` and the whole payload is dropped |
+| pysparkplug 0.6.1 | width-sized | width-sized only: a sign-extended value raises `OverflowError` and the whole payload is dropped |
+| srad 0.5.0 | width-sized | both: truncates to the width |
+| sparkplughost v0.4.0 | not applicable | no decoding: it hands the host the protobuf metric |
+
+The tahu-js and sparkplughost adapters report the low bits of the value
+themselves, because a document must carry the type's value, so they read both
+forms in the tables above; that is the adapter, not the library. tahu-js has
+the edge role only here, and no fixture writes a negative Int8 or Int16, so its
+decoding is not run.
+
+The scalars fixture has negative Int8 and Int16 values, down to the minimum of
+each. The fixture says the value and each edge encodes it the way its stack
+does, so every host meets both forms: from pysparkplug and srad width-sized,
+from the others sign-extended. The known differences reproduce only because
+the forms differ, so a change in either stack shows as a stale entry.
+
+Decoders that truncate also accept values that are neither form, such as `0x100`
+for an Int8. No stack sends these, and a stricter decoder may reject them.
+
+The ambiguity is worth raising with the Eclipse Sparkplug maintainers; nothing
+has been filed from here.
 
 ### Tahu encodes UInt32 in long_value
 
