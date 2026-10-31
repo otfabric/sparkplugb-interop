@@ -23,6 +23,22 @@ Tags are immutable. A fix is a new version.
 
 ---
 
+## v0.2.2
+
+**Date:** 2026-10-31
+**Previous release:** v0.2.1
+
+### Changed
+
+- **The Int8 and Int16 entries of `tests/known-bugs.tsv` are reclassified as specification ambiguity.** Sparkplug B 3.0.0 does not say how a negative value goes in `int_value`. The pairings that cannot work (the pysparkplug host with sign-extended edges, the SparkplugNet host with width-sized edges) stay recorded as known differences. No stack is labelled non-compliant for its form.
+- **The `scalars` fixture has a third update** that takes Int8 and Int16 to -128 and -32768. Consumers that run every update of a fixture run one step more.
+
+### Fixed
+
+- `docs/COMPATIBILITY.md`: tahu-js does not read both forms, only the harness adapter does; sparkplughost does not decode these values, its adapter does. The table of what each stack encodes and decodes is new.
+
+---
+
 ## v0.2.1
 
 **Date:** 2026-10-31

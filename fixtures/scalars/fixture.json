@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1.0",
   "name": "scalars",
-  "description": "One edge node without devices with one metric of every scalar Sparkplug datatype, and one update that changes each of them.",
+  "description": "One edge node without devices with one metric of every scalar Sparkplug datatype, one update that changes each of them, and one that takes Int8 and Int16 to their minimum.",
   "group": "interop",
   "edgeNode": "scalars1",
   "node": {
@@ -40,6 +40,13 @@
         {"name": "Scalars/String", "value": ""},
         {"name": "Scalars/DateTime", "value": 0},
         {"name": "Scalars/Text", "value": "änd ünïcödé"}
+      ],
+      "devices": {}
+    },
+    {
+      "node": [
+        {"name": "Scalars/Int8", "value": -128},
+        {"name": "Scalars/Int16", "value": -32768}
       ],
       "devices": {}
     }
