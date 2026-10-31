@@ -15,3 +15,12 @@ __pycache__/
 *.pyc
 reports/
 scripts/__pycache__/
+
+# Build artefacts live in /bin/ and /release/ (otfabric/engineering REPO-005)
+/bin/
+/release/
+*.test
+coverage.out
+
+# Output of a bare `go build`, anchored so it can never hide a source folder
+/adapters/sparkplughost/sparkplughost

@@ -6,7 +6,7 @@ Independent Sparkplug B 3.0.0 edge node and host application implementations (Ec
 
 ## Organisation standards
 
-This repository follows **otfabric/engineering policy 1.1**, profile **interoperability** (`.otfabric/policy.yaml`, mode `enforce`). Where this file and the organisation standards disagree, this file wins here — say so in your report.
+This repository follows **otfabric/engineering policy 1.2**, profile **interoperability** (`.otfabric/policy.yaml`, mode `enforce`). Where this file and the organisation standards disagree, this file wins here — say so in your report.
 
 ## Where the truth lives
 
