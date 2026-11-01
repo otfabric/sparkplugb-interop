@@ -1,6 +1,6 @@
 # SparkplugNet upstream reports
 
-What we reported to [SparkplugNet](https://github.com/SeppPenner/SparkplugNet), found by this adapter against version 1.4.1. Findings are in [docs/COMPATIBILITY.md](../../docs/COMPATIBILITY.md). When a fix is released, update the pin in `versions.yaml`, and drop the matching lines of `tests/known-bugs.tsv` here and the entries of `knownBugs` in go-sparkplugb `interop/harness_test.go`.
+What we reported to [SparkplugNet](https://github.com/SeppPenner/SparkplugNet), found by this adapter against version 1.4.1. Findings are in [docs/COMPATIBILITY.md](../../docs/COMPATIBILITY.md). When a fix is released, update the pin in `versions.yaml` and drop the matching lines of `tests/known-bugs.tsv`.
 
 | Finding | Issue | Proposed fix |
 |---|---|---|
