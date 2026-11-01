@@ -15,6 +15,7 @@ them with `print-fixture`.
 |---------|-------------------|
 | [`baseline`](../fixtures/baseline/fixture.json) | Node metrics, two devices, aliases, writable metrics on the node and on a device, two updates that touch the node and both devices |
 | [`scalars`](../fixtures/scalars/fixture.json) | One metric of every scalar datatype, at its initial value and at its limits. Its negative Int8 and Int16 values show the [two encodings](COMPATIBILITY.md#int8-and-int16-are-encoded-two-ways): the fixture gives the value, and each edge encodes it the way its stack does |
+| [`composite`](../fixtures/composite/fixture.json) | Integers inside the composite values: DataSet cells, template parameters and members, and metric properties, at the limits of each type. Stacks that have them: Tahu, tahu-js and SparkplugNet as edges; Tahu, SparkplugNet and sparkplughost as hosts. pysparkplug has none of these, srad no DataSet |
 
 ## Format
 
@@ -67,6 +68,31 @@ loads a fixture (an invalid fixture is exit 4):
 | `Boolean` | boolean | |
 | `String`, `Text` | string | |
 | `DateTime` | number, milliseconds since the epoch | 0 to 2^53 − 1 |
+
+## DataSets, templates and properties
+
+```json
+{"name": "Table", "alias": 1, "datatype": "DataSet",
+ "value": {"columns": ["i8"], "types": ["Int8"], "rows": [[-8], [127]]}}
+{"name": "SignedType", "alias": 2, "datatype": "Template",
+ "value": {"version": "1.0", "isDefinition": true,
+           "parameters": [{"name": "low", "type": "Int8", "value": -8}],
+           "metrics": [{"name": "offset", "datatype": "Int8", "value": -8}]}}
+{"name": "Instance", "alias": 3, "datatype": "Template",
+ "value": {"templateRef": "SignedType", "isDefinition": false,
+           "parameters": [{"name": "low", "type": "Int8", "value": -1}],
+           "metrics": [{"name": "offset", "datatype": "Int8", "value": -1}]}}
+{"name": "Scaled", "alias": 4, "datatype": "Int32", "value": -5,
+ "properties": {"low": {"type": "Int8", "value": -8}}}
+```
+
+Cells, parameters, members and properties have the scalar datatypes above and
+their ranges. `templateRef` is the name of the metric of the definition, which
+is in the node's metrics. `properties` go out in births; updates change a value
+only, and a DataSet or Template by a whole new value. Keys of a document are
+not ordered: consumers compare them as sets.
+
+## Unsupported datatypes
 
 An adapter whose upstream cannot carry a datatype does not substitute another:
 it leaves the fixture out of its capabilities (`fixtures`), and `edge` with

@@ -44,7 +44,7 @@ export REGISTRY VERSION BROKER_REGISTRY
 
 # image-% and smoke-% are pattern rules, which make ignores for .PHONY
 # targets: they depend on FORCE instead.
-.PHONY: help all ci validate unittests documents lint images smoke interop interop-brokers buildx publish \
+.PHONY: help all ci validate unittests documents lint images smoke interop int-vectors interop-brokers buildx publish \
         buildx-setup publish-arch publish-manifest digests capabilities lock-pysparkplug upstream clean FORCE
 FORCE:
 
@@ -119,6 +119,9 @@ smoke-%: FORCE ## Smoke test one adapter, e.g. smoke-srad
 
 interop: ## Cross-stack self-test on BROKER (default mosquitto): every host against every edge, every fixture
 	@scripts/interop.sh $(ADAPTERS)
+
+int-vectors: ## Print what each host makes of the Int8 and Int16 wire vectors of tests/int-vectors.tsv
+	@scripts/int-vectors.sh $(filter-out tahu-js,$(ADAPTERS))
 
 interop-brokers: ## Cross-stack self-test on every broker of BROKERS
 	@for b in $(BROKERS); do echo "== broker $$b"; BROKER=$$b REPORT_DIR=$${REPORT_DIR:+$$REPORT_DIR/$$b} scripts/interop.sh $(ADAPTERS) || exit 1; done

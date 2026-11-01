@@ -106,12 +106,12 @@ outcome() {
 # fixture (and Node Control/Rebirth), sorted by name.
 NORMALIZE='
   ([$fx.node.metrics[].name, $fx.devices[].metrics[].name, "Node Control/Rebirth"]) as $names
-  | {type, device, seq, metrics: ([.metrics[] | select(.name as $n | $names | index($n)) | {name, datatype, value}] | sort_by(.name))}
+  | {type, device, seq, metrics: ([.metrics[] | select(.name as $n | $names | index($n)) | {name, datatype, value} + (if .properties then {properties} else {} end)] | sort_by(.name))}
   | walk(if type == "number" then . + 0 else . end)'
 
 births() {  # births <seq of NBIRTH>: NBIRTH and the DBIRTHs of online devices
     jq -c --argjson seq "$1" --argjson off "${OFFLINE}" '
-        def m: [.[] | {name, datatype, value}] | sort_by(.name);
+        def m: [.[] | {name, datatype, value} + (if .properties then {properties} else {} end)] | sort_by(.name);
         [{type: "NBIRTH", device: null, seq: $seq,
           metrics: ([{name: "Node Control/Rebirth", datatype: "Boolean", value: false}] + .node.metrics | m)}]
         + [ [.devices[] | select(.id as $d | $off | index($d) | not)] | to_entries[]
@@ -155,8 +155,8 @@ compare() {
     local label="$1" step="$2" got want n=${#EXPECTED[@]}
     at "${3:-$2}"
     got=$(wait_events "${H}" ".event == \"message\" and .edgeNode == \"${EDGE_NODE}\"" "${n}" \
-        | jq -c --slurpfile fx "${FIXTURE_FILE}" "\$fx[0] as \$fx | ${NORMALIZE}" | head -n "${n}" | LC_ALL=C sort)
-    want=$(printf '%s\n' "${EXPECTED[@]}" | jq -c 'walk(if type == "number" then . + 0 else . end)' | LC_ALL=C sort)
+        | jq -cS --slurpfile fx "${FIXTURE_FILE}" "\$fx[0] as \$fx | ${NORMALIZE}" | head -n "${n}" | LC_ALL=C sort)
+    want=$(printf '%s\n' "${EXPECTED[@]}" | jq -cS 'walk(if type == "number" then . + 0 else . end)' | LC_ALL=C sort)
     if [[ "${got}" == "${want}" ]]; then
         outcome 0 "${PAIR}: ${label}" "${step}"
     else
@@ -302,7 +302,7 @@ pairing() {  # pairing <host adapter> <edge adapter> <fixture>
         fi
         call "${E}" device-birth "{\"device\": \"${first_dev}\"}" >/dev/null
         expect "$(jq -c --arg d "${first_dev}" --argjson s "${SEQ}" '.devices[] | select(.id == $d) |
-            {type: "DBIRTH", device: $d, seq: $s, metrics: ([.metrics[] | {name, datatype, value}] | sort_by(.name))}' <<<"${STATE}")"
+            {type: "DBIRTH", device: $d, seq: $s, metrics: ([.metrics[] | {name, datatype, value} + (if .properties then {properties} else {} end)] | sort_by(.name))}' <<<"${STATE}")"
         SEQ=$(( (SEQ + 1) % 256 ))
         compare "device birth" device-birth
     else skip "${PAIR}: device death and birth"; fi

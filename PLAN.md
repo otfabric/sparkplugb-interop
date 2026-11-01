@@ -29,7 +29,7 @@ with everything green in CI on both architectures.
 
 ## Phase 5 - Expanded coverage (open)
 
-- Fixtures with templates, DataSets, arrays and metric properties.
+- Fixtures with arrays. Templates, DataSets and metric properties are in `composite`.
 - A role for applications that are not the primary host.
 - Reordering by the host (the reorder timeout) without timing dependence.
 - MQTT 5 and TLS once a consumer needs them.

@@ -259,8 +259,12 @@
             "number",
             "boolean",
             "string",
+            "object",
             "null"
           ]
+        },
+        "properties": {
+          "type": "object"
         }
       },
       "if": {

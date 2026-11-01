@@ -75,7 +75,7 @@ internal static class Out
 internal static class Values
 {
     public static readonly string[] DataTypes =
-        ["Int8", "Int16", "Int32", "Int64", "UInt8", "UInt16", "UInt32", "UInt64", "Float", "Double", "Boolean", "String", "DateTime", "Text"];
+        ["Int8", "Int16", "Int32", "Int64", "UInt8", "UInt16", "UInt32", "UInt64", "Float", "Double", "Boolean", "String", "DateTime", "Text", "DataSet", "Template"];
 
     private const long MaxSafe = (1L << 53) - 1;
 
@@ -93,6 +93,40 @@ internal static class Values
 
     public static void Check(string where, string dt, JsonElement v)
     {
+        if (dt == "DataSet")
+        {
+            var types = v.GetProperty("types");
+            foreach (var row in v.GetProperty("rows").EnumerateArray())
+            {
+                if (row.GetArrayLength() != types.GetArrayLength())
+                {
+                    throw new FixtureError($"{where}: a row has not one cell per column");
+                }
+
+                for (var i = 0; i < row.GetArrayLength(); i++)
+                {
+                    Check(where, types[i].GetString()!, row[i]);
+                }
+            }
+
+            return;
+        }
+
+        if (dt == "Template")
+        {
+            foreach (var p in v.GetProperty("parameters").EnumerateArray())
+            {
+                Check(where, p.GetProperty("type").GetString()!, p.GetProperty("value"));
+            }
+
+            foreach (var m in v.GetProperty("metrics").EnumerateArray())
+            {
+                Check(where, m.GetProperty("datatype").GetString()!, m.GetProperty("value"));
+            }
+
+            return;
+        }
+
         if (Ranges.TryGetValue(dt, out var range))
         {
             if (v.ValueKind != JsonValueKind.Number || !v.TryGetInt64(out var i) || i < range.Lo || i > range.Hi)
@@ -148,8 +182,126 @@ internal static class Values
         "Float" => (float)v.GetDouble(),
         "Double" => v.GetDouble(),
         "Boolean" => v.GetBoolean(),
+        "DataSet" => ToDataSet(v),
+        "Template" => ToTemplate(v),
         _ => v.GetString(),
     };
+
+    private static DataSet ToDataSet(JsonElement v)
+    {
+        var types = v.GetProperty("types").EnumerateArray().Select(t => t.GetString()!).ToArray();
+        return new DataSet
+        {
+            NumberOfColumns = (ulong)types.Length,
+            Columns = [.. v.GetProperty("columns").EnumerateArray().Select(c => c.GetString()!)],
+            Types = [.. types.Select(t => (uint)ToSpb(t))],
+            Rows = [.. v.GetProperty("rows").EnumerateArray().Select(row => new Row
+            {
+                Elements = [.. row.EnumerateArray().Select((cell, i) => new DataSetValue(ToSpb(types[i]), ToClr(types[i], cell)))],
+            })],
+        };
+    }
+
+    private static Template ToTemplate(JsonElement v)
+    {
+        var t = new Template
+        {
+            IsDefinition = v.GetProperty("isDefinition").GetBoolean(),
+            Parameters = [.. v.GetProperty("parameters").EnumerateArray().Select(p =>
+            {
+                var dt = p.GetProperty("type").GetString()!;
+                return new Parameter(p.GetProperty("name").GetString()!, ToSpb(dt), ToClr(dt, p.GetProperty("value")));
+            })],
+            Metrics = [.. v.GetProperty("metrics").EnumerateArray().Select(m =>
+            {
+                var dt = m.GetProperty("datatype").GetString()!;
+                return new Metric(m.GetProperty("name").GetString()!, ToSpb(dt), ToClr(dt, m.GetProperty("value")), DateTimeOffset.UtcNow);
+            })],
+        };
+        if (v.TryGetProperty("version", out var version))
+        {
+            t.Version = version.GetString()!;
+        }
+
+        if (v.TryGetProperty("templateRef", out var reference))
+        {
+            t.TemplateRef = reference.GetString()!;
+        }
+
+        return t;
+    }
+
+    public static PropertySet? ToProperties(JsonElement? v)
+    {
+        if (v is null)
+        {
+            return null;
+        }
+
+        var set = new PropertySet();
+        foreach (var p in v.Value.EnumerateObject())
+        {
+            var dt = p.Value.GetProperty("type").GetString()!;
+            set.Keys.Add(p.Name);
+            set.Values.Add(new PropertyValue(ToSpb(dt), ToClr(dt, p.Value.GetProperty("value"))));
+        }
+
+        return set;
+    }
+
+    private static JsonNode? CellToJson(DataType dt, object? v) => v is null ? null : dt switch
+    {
+        DataType.Int8 or DataType.Int16 or DataType.Int32 or DataType.Int64
+            or DataType.UInt8 or DataType.UInt16 or DataType.UInt32 => JsonValue.Create(Convert.ToInt64(v)),
+        DataType.UInt64 => JsonValue.Create(Convert.ToUInt64(v)),
+        _ => JsonValue.Create(Convert.ToString(v)),
+    };
+
+    private static JsonObject DataSetToJson(DataSet d)
+    {
+        var rows = new JsonArray();
+        foreach (var row in d.Rows)
+        {
+            var cells = new JsonArray();
+            foreach (var cell in row.Elements)
+            {
+                cells.Add(CellToJson(cell.DataType, cell.Value));
+            }
+
+            rows.Add(cells);
+        }
+
+        return new JsonObject
+        {
+            ["columns"] = new JsonArray([.. d.Columns.Select(c => (JsonNode)c)]),
+            ["types"] = new JsonArray([.. d.Types.Select(t => (JsonNode)FromSpb((DataType)t))]),
+            ["rows"] = rows,
+        };
+    }
+
+    private static JsonObject TemplateToJson(Template t)
+    {
+        var o = new JsonObject();
+        if (!string.IsNullOrEmpty(t.Version))
+        {
+            o["version"] = t.Version;
+        }
+
+        if (!string.IsNullOrEmpty(t.TemplateRef))
+        {
+            o["templateRef"] = t.TemplateRef;
+        }
+
+        o["isDefinition"] = t.IsDefinition ?? false;
+        o["parameters"] = new JsonArray([.. t.Parameters.Select(p => (JsonNode)new JsonObject
+        {
+            ["name"] = p.Name,
+            ["type"] = FromSpb(p.DataType),
+            ["value"] = CellToJson(p.DataType, p.Value),
+        })]);
+        o["metrics"] = new JsonArray([.. t.Metrics.Select(m => (JsonNode)Doc(m))]);
+        return o;
+    }
 
     public static JsonNode? ToJson(Metric m)
     {
@@ -161,6 +313,8 @@ internal static class Values
         var v = m.Value;
         return m.DataType switch
         {
+            DataType.DataSet => DataSetToJson((DataSet)v),
+            DataType.Template => TemplateToJson((Template)v),
             DataType.Int8 or DataType.Int16 or DataType.Int32 or DataType.Int64
                 or DataType.UInt8 or DataType.UInt16 or DataType.UInt32 => JsonValue.Create(Convert.ToInt64(v)),
             DataType.UInt64 => JsonValue.Create(Convert.ToUInt64(v)),
@@ -186,14 +340,26 @@ internal static class Values
             doc["alias"] = m.Alias; // an alias SparkplugNet cannot resolve
         }
 
+        if (m.Properties is { Keys.Count: > 0 } props)
+        {
+            var o = new JsonObject();
+            for (var i = 0; i < props.Keys.Count; i++)
+            {
+                var p = props.Values[i];
+                o[props.Keys[i]] = new JsonObject { ["type"] = FromSpb(p.DataType), ["value"] = CellToJson(p.DataType, p.Value) };
+            }
+
+            doc["properties"] = o;
+        }
+
         return doc;
     }
 
-    public static Metric Make(string name, string dt, JsonElement value, ulong? alias = null) =>
-        new(name, ToSpb(dt), ToClr(dt, value)) { Alias = alias };
+    public static Metric Make(string name, string dt, JsonElement value, ulong? alias = null, JsonElement? properties = null) =>
+        new(name, ToSpb(dt), ToClr(dt, value)) { Alias = alias, Properties = ToProperties(properties) };
 }
 
-internal sealed record FixtureMetric(string Name, ulong Alias, string DataType, JsonElement Value, bool Writable);
+internal sealed record FixtureMetric(string Name, ulong Alias, string DataType, JsonElement Value, bool Writable, JsonElement? Properties = null);
 
 internal sealed record FixtureDevice(string Id, List<FixtureMetric> Metrics);
 
@@ -292,7 +458,7 @@ internal sealed class Fixture
                 Values.Check(where, dt, value);
                 var writable = m.TryGetProperty("writable", out var w) && w.ValueKind == JsonValueKind.True;
                 types[(scope, name)] = dt;
-                list.Add(new FixtureMetric(name, (ulong)alias, dt, value, writable));
+                list.Add(new FixtureMetric(name, (ulong)alias, dt, value, writable, m.TryGetProperty("properties", out var ps) ? ps.Clone() : null));
             }
 
             return list;
@@ -884,12 +1050,12 @@ internal sealed class Edge : Role
         this.clientId = flags.TryGetValue("client-id", out var c) ? (string)c : $"sparkplugb-interop-{Program.Adapter}-edge-{this.group}-{this.nodeId}";
         foreach (var m in this.fx.Node)
         {
-            this.nodeMetrics[m.Name] = (m, Values.Make(m.Name, m.DataType, m.Value, m.Alias));
+            this.nodeMetrics[m.Name] = (m, Values.Make(m.Name, m.DataType, m.Value, m.Alias, m.Properties));
         }
 
         foreach (var d in this.fx.Devices)
         {
-            this.deviceMetrics[d.Id] = d.Metrics.ToDictionary(m => m.Name, m => (m, Values.Make(m.Name, m.DataType, m.Value, m.Alias)));
+            this.deviceMetrics[d.Id] = d.Metrics.ToDictionary(m => m.Name, m => (m, Values.Make(m.Name, m.DataType, m.Value, m.Alias, m.Properties)));
             this.online.Add(d.Id);
         }
     }
@@ -1337,7 +1503,7 @@ internal static class Program
             ["edge"] = new JsonObject
             {
                 ["supported"] = true,
-                ["fixtures"] = new JsonArray("baseline", "scalars"),
+                ["fixtures"] = new JsonArray("baseline", "scalars", "composite"),
                 ["calls"] = new JsonArray([.. EdgeCalls.Select(c => (JsonNode)c)]),
                 ["features"] = new JsonObject
                 {

@@ -1,6 +1,6 @@
 # Container contract
 
-Version: **0.1 (draft)**. `contract_version` in [versions.yaml](../versions.yaml).
+Version: **0.2 (draft)**. `contract_version` in [versions.yaml](../versions.yaml).
 
 Every adapter image exposes the same commands, flags, JSON documents and exit
 codes. Consumers depend on this document, not on any adapter's source. Until
@@ -228,10 +228,16 @@ Every metric in an event, a payload or a result is
 - `datatype` is the Sparkplug datatype name, as the
   [fixtures](FIXTURES.md#datatypes) spell them: `Int8`, `Int16`, `Int32`,
   `Int64`, `UInt8`, `UInt16`, `UInt32`, `UInt64`, `Float`, `Double`,
-  `Boolean`, `String`, `DateTime`, `Text`.
+  `Boolean`, `String`, `DateTime`, `Text`, `DataSet`, `Template`.
 - `value` is a JSON number for the integer types, `Float`, `Double` and
   `DateTime` (milliseconds since the epoch), a boolean for `Boolean`, a string
-  for `String` and `Text`, and `null` for a metric whose `is_null` is set.
+  for `String` and `Text`, an object for `DataSet` and `Template` (the
+  [form of the fixtures](FIXTURES.md#datasets-templates-and-properties), with
+  an empty `version` or `templateRef` left out), and `null` for a metric whose
+  `is_null` is set.
+- `properties`, on a metric that has any, is an object of key to
+  `{"type": "...", "value": ...}`. Every host that declares `DataSet` and
+  `Template` reports them.
 
 In a `message` event, metrics are in the order of the payload. The `bdSeq`
 metric is reported in the event's `bdSeq` field, not among `metrics`. Other
@@ -293,7 +299,7 @@ repository. An unknown name is exit 1.
 
 ## Gaps before 1.0
 
-- [ ] Templates, DataSets, arrays and properties are not in any fixture.
+- [ ] Arrays are not in any fixture. Properties are in `composite` with integer values only.
 - [ ] The MQTT version is not specified. Every adapter connects with MQTT
       3.1.1 except srad, whose client (rumqttc) speaks MQTT 5 only. TLS and
       authentication to the broker are not specified either.

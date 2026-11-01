@@ -51,7 +51,7 @@ locally.
 ## Cross-stack matrix
 
 `make interop-brokers` runs every host against every edge node (including
-itself), on both fixtures, on each broker. For each pairing it checks the
+itself), on every fixture they share, on each broker. For each pairing it checks the
 births, every update, the writes, rebirth on request and by call, device
 death and birth, the host's `nodes` view, NDEATH on a clean stop, births
 after a restart, the will after a crash and the primary host's STATE. A step
@@ -82,20 +82,21 @@ srad edges on NanoMQ the
 ⁷ The Tahu host [rejects a DBIRTH that reuses aliases](#tahu-host-rejects-a-dbirth-that-reuses-aliases).
 ⁸ Tahu and tahu-js [encode UInt32 in `long_value`](#tahu-encodes-uint32-in-long_value) (scalars).
 
-Verified on linux/arm64 with the pins above on 2026-10-27, six adapters on
-each broker (72 pairings per broker, both fixtures):
+Verified with the pins above on 2026-11-01 by [CI run 41297617473](https://github.com/otfabric/sparkplugb-interop/actions/runs/41297617473),
+commit 5396496, six adapters on each broker (59 pairings per broker, all three
+fixtures). Mosquitto is the same on linux/amd64 and linux/arm64, the other
+brokers are on linux/amd64. The counts are the last line of each job's log.
 
 | Broker | Passed | Failed | Known bugs | Skipped (capability) |
 |--------|-------:|-------:|-----------:|---------------------:|
-| Mosquitto 2.1.2 | 582 | 0 | 167 | 137 |
-| HiveMQ CE 2026.5 | 574 | 0 | 175 | 137 |
-| EMQX 6.3.2 | 582 | 0 | 167 | 137 |
-| NanoMQ 0.25.7 | 549 | 0 | 200 | 137 |
+| Mosquitto 2.1.2 | 689 | 0 | 191 | 168 |
+| HiveMQ CE 2026.5 | 681 | 0 | 199 | 168 |
+| EMQX 6.3.2 | 694 | 0 | 186 | 168 |
+| NanoMQ 0.25.7 | 667 | 0 | 213 | 168 |
 
-The difference between brokers is the intermittent findings.
-
-These counts predate the third update of the scalars fixture (v0.2.2), which adds
-steps to each scalars pairing.
+The difference between brokers is the intermittent findings, so a count moves
+from run to run on HiveMQ CE and NanoMQ: NanoMQ gave 636 passed and 244 known bugs
+in the run of the same commit that the push started.
 
 ## Findings
 
@@ -125,7 +126,7 @@ same.
 | Stack | Encodes | Decodes |
 |-------|---------|---------|
 | Eclipse Tahu 1.0.21 (Java) | sign-extended | both: truncates to the width |
-| sparkplug-payload (tahu-js) 3.2.4 | sign-extended | sign-extended only: a width-sized Int8 of -8 reads as 248 |
+| sparkplug-payload 1.0.3, in sparkplug-client (tahu-js) 3.2.4 | sign-extended | sign-extended only: a width-sized Int8 of -8 reads as 248 |
 | SparkplugNet 1.4.1 | sign-extended | sign-extended only: a width-sized value raises `OverflowException` and the whole payload is dropped |
 | pysparkplug 0.6.1 | width-sized | width-sized only: a sign-extended value raises `OverflowError` and the whole payload is dropped |
 | srad 0.5.0 | width-sized | both: truncates to the width |
@@ -133,9 +134,7 @@ same.
 
 The tahu-js and sparkplughost adapters report the low bits of the value
 themselves, because a document must carry the type's value, so they read both
-forms in the tables above; that is the adapter, not the library. tahu-js has
-the edge role only here, and no fixture writes a negative Int8 or Int16, so its
-decoding is not run.
+forms in the self-test; that is the adapter, not the library.
 
 The scalars fixture has negative Int8 and Int16 values, down to the minimum of
 each. The fixture says the value and each edge encodes it the way its stack
@@ -148,6 +147,62 @@ for an Int8. No stack sends these, and a stricter decoder may reject them.
 
 The ambiguity is worth raising with the Eclipse Sparkplug maintainers; nothing
 has been filed from here.
+
+### Int8 and Int16 inside DataSets, templates and properties
+
+The `composite` fixture runs where the stacks have these values: Tahu, tahu-js
+and SparkplugNet as edges, Tahu, SparkplugNet and sparkplughost as hosts.
+pysparkplug has none of them. srad has templates and properties but no DataSet,
+and its templates are generated from Rust types, so it does not declare the
+fixture. Each of the three edges sign-extends in DataSet cells, template
+parameters and members and properties, as it does in a metric.
+
+`make int-vectors` publishes the payloads of `tests/int-vectors.tsv` to each
+host as NBIRTHs: the boundary values of Int8 and Int16 in both forms, and values
+of neither form. Each row is what the run gave:
+
+| Host | Sign-extended | Width-sized | Neither form, such as `0x100` for an Int8 |
+|------|---------------|-------------|--------------------------------------------|
+| Tahu 1.0.21 | the value | the value | the low bits: 0 |
+| SparkplugNet 1.4.1 | the value | payload dropped | payload dropped |
+| pysparkplug 0.6.1 | payload dropped | the value | payload dropped |
+| srad 0.5.0 | the value | the value | the low bits: 0 |
+
+Tahu and SparkplugNet behave the same in DataSet cells, template parameters and
+members; properties do not reach the SparkplugNet host. pysparkplug and srad get
+metric vectors only. sparkplughost is left out of the table, because the values
+are the adapter's reading.
+
+sparkplug-payload 1.0.3, run directly on the same payloads, reads Int8 and Int16
+from a metric, a property or a template member as a 32-bit integer: -8 from the
+sign-extended form, 248 from the width-sized one, 256 from `0x100`. On any Int8
+or Int16 DataSet cell or template parameter its decoder throws, because
+`getDataSetValue` and `getTemplateParamValue` have no case for them. The adapter
+has no host, so this is not in the matrix.
+
+SparkplugNet 1.4.1 reads a UInt32 DataSet cell, property or parameter from
+`long_value` only. No edge here sends one in `int_value`, where Sparkplug puts it,
+so the matrix does not show it; a consumer that encodes to the specification
+reads 0 on that host.
+
+### SparkplugNet host drops properties
+
+SparkplugNet 1.4.1 copies no `properties` in
+`PayloadConverter.ConvertVersionBMetric`: a host gets the metric without them.
+
+### Tahu host leaves out a Template addressed by alias
+
+A Template in a data message that has only an alias has no name, and Tahu 1.0.21
+looks up the datatypes of its members under `/<member>`, which fails when they
+carry none. Metrics of data messages should not carry a datatype, and the Tahu
+edge omits them. The metric is left out of the decoded payload, with a warning.
+
+### SparkplugNet sends an empty template_ref
+
+The SparkplugNet 1.4.1 `Template` defaults `TemplateRef` to the empty string and
+sends it on a definition too, which `[tck-id-payloads-template-definition-ref]`
+says omits it. Hosts in this repository report an empty `version` or
+`templateRef` as absent, because Tahu's decoder gives both as empty strings.
 
 ### Tahu encodes UInt32 in long_value
 
