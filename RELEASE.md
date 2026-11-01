@@ -23,6 +23,27 @@ Tags are immutable. A fix is a new version.
 
 ---
 
+## v0.3.0
+
+**Date:** 2026-11-01
+**Previous release:** v0.2.2
+
+### Added
+
+- **Fixture `composite`:** integers inside the composite values of Sparkplug, DataSet cells, template parameters and members, and metric properties, at the limits of each type. Tahu, tahu-js and SparkplugNet run it as edges, Tahu, SparkplugNet and sparkplughost as hosts. pysparkplug has none of these values, and srad no DataSet: neither declares the fixture.
+- **Contract 0.2:** `DataSet` and `Template` as datatypes, with object values, and `properties` on metrics, in fixtures and in `message` events (`docs/FIXTURES.md`, `docs/CONTAINER_CONTRACT.md`). Consumers that run every fixture of an edge meet one more, and must read object values.
+- Known bugs: the SparkplugNet host drops metric properties, the Tahu host leaves out an alias-addressed Template whose members carry no datatype.
+
+### Changed
+
+- The self-test compares documents with sorted keys.
+
+### Documentation
+
+- `docs/COMPATIBILITY.md`: the per-broker counts are from a run with the third update of `scalars` and with `composite`.
+
+---
+
 ## v0.2.2
 
 **Date:** 2026-10-31

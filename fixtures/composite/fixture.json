@@ -1,0 +1,232 @@
+{
+  "schemaVersion": "1.0",
+  "name": "composite",
+  "description": "Integers inside the composite values of Sparkplug: DataSet cells, template parameters and members, and metric properties, at the limits of each type. Negative Int8 and Int16 show which of the two encodings a stack uses there.",
+  "group": "interop",
+  "edgeNode": "edge1",
+  "node": {
+    "metrics": [
+      {
+        "name": "Signed/Table",
+        "alias": 1,
+        "datatype": "DataSet",
+        "value": {
+          "columns": [
+            "i16",
+            "i32",
+            "i64",
+            "i8",
+            "u16",
+            "u32",
+            "u64",
+            "u8"
+          ],
+          "types": [
+            "Int16",
+            "Int32",
+            "Int64",
+            "Int8",
+            "UInt16",
+            "UInt32",
+            "UInt64",
+            "UInt8"
+          ],
+          "rows": [
+            [
+              -300,
+              -70000,
+              -5000000000,
+              -8,
+              65535,
+              4294967295,
+              9007199254740991,
+              255
+            ],
+            [
+              -32768,
+              -2147483648,
+              -9007199254740991,
+              -128,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              32767,
+              2147483647,
+              9007199254740991,
+              127,
+              1,
+              1,
+              1,
+              1
+            ]
+          ]
+        }
+      },
+      {
+        "name": "SignedType",
+        "alias": 2,
+        "datatype": "Template",
+        "value": {
+          "version": "1.0",
+          "isDefinition": true,
+          "parameters": [
+            {
+              "name": "low",
+              "type": "Int8",
+              "value": -8
+            },
+            {
+              "name": "span",
+              "type": "Int16",
+              "value": -300
+            }
+          ],
+          "metrics": [
+            {
+              "name": "gain",
+              "datatype": "Int16",
+              "value": -300
+            },
+            {
+              "name": "offset",
+              "datatype": "Int8",
+              "value": -8
+            }
+          ]
+        }
+      },
+      {
+        "name": "Signed/Instance",
+        "alias": 3,
+        "datatype": "Template",
+        "value": {
+          "templateRef": "SignedType",
+          "isDefinition": false,
+          "parameters": [
+            {
+              "name": "low",
+              "type": "Int8",
+              "value": -128
+            },
+            {
+              "name": "span",
+              "type": "Int16",
+              "value": -32768
+            }
+          ],
+          "metrics": [
+            {
+              "name": "gain",
+              "datatype": "Int16",
+              "value": -32768
+            },
+            {
+              "name": "offset",
+              "datatype": "Int8",
+              "value": -128
+            }
+          ]
+        }
+      },
+      {
+        "name": "Signed/Scaled",
+        "alias": 4,
+        "datatype": "Int32",
+        "value": -5,
+        "properties": {
+          "limit": {
+            "type": "UInt16",
+            "value": 65535
+          },
+          "low": {
+            "type": "Int8",
+            "value": -8
+          },
+          "span": {
+            "type": "Int16",
+            "value": -300
+          }
+        }
+      }
+    ]
+  },
+  "devices": [],
+  "updates": [
+    {
+      "node": [
+        {
+          "name": "Signed/Table",
+          "value": {
+            "columns": [
+              "i16",
+              "i32",
+              "i64",
+              "i8",
+              "u16",
+              "u32",
+              "u64",
+              "u8"
+            ],
+            "types": [
+              "Int16",
+              "Int32",
+              "Int64",
+              "Int8",
+              "UInt16",
+              "UInt32",
+              "UInt64",
+              "UInt8"
+            ],
+            "rows": [
+              [
+                -1,
+                -1,
+                -1,
+                -1,
+                1,
+                1,
+                1,
+                1
+              ]
+            ]
+          }
+        },
+        {
+          "name": "Signed/Instance",
+          "value": {
+            "templateRef": "SignedType",
+            "isDefinition": false,
+            "parameters": [
+              {
+                "name": "low",
+                "type": "Int8",
+                "value": -1
+              },
+              {
+                "name": "span",
+                "type": "Int16",
+                "value": -1
+              }
+            ],
+            "metrics": [
+              {
+                "name": "gain",
+                "datatype": "Int16",
+                "value": -1
+              },
+              {
+                "name": "offset",
+                "datatype": "Int8",
+                "value": -1
+              }
+            ]
+          }
+        }
+      ],
+      "devices": {}
+    }
+  ]
+}

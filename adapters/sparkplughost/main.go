@@ -56,7 +56,7 @@ const (
 
 var (
 	idPattern  = regexp.MustCompile(`^[^/+#]+$`)
-	datatypes  = []string{"Int8", "Int16", "Int32", "Int64", "UInt8", "UInt16", "UInt32", "UInt64", "Float", "Double", "Boolean", "String", "DateTime", "Text"}
+	datatypes  = []string{"Int8", "Int16", "Int32", "Int64", "UInt8", "UInt16", "UInt32", "UInt64", "Float", "Double", "Boolean", "String", "DateTime", "Text", "DataSet", "Template"}
 	hostCalls  = []string{"send-command", "request-rebirth", "nodes"}
 	allCalls   = map[string]bool{"publish-data": true, "rebirth": true, "device-death": true, "device-birth": true, "send-command": true, "request-rebirth": true, "nodes": true}
 	intRanges  = map[string][2]float64{"Int8": {-(1 << 7), 1<<7 - 1}, "Int16": {-(1 << 15), 1<<15 - 1}, "Int32": {-(1 << 31), 1<<31 - 1}, "Int64": {-maxSafe, maxSafe}, "UInt8": {0, 255}, "UInt16": {0, 65535}, "UInt32": {0, 1<<32 - 1}, "UInt64": {0, maxSafe}, "DateTime": {0, maxSafe}}
@@ -316,18 +316,17 @@ func jsonValue(dt string, m *protobuf.Payload_Metric) any {
 	if m.GetIsNull() || m.GetValue() == nil {
 		return nil
 	}
-	i, isInt := integer(m)
 	switch dt {
-	case "Int8":
-		return int8(uint8(i))
-	case "Int16":
-		return int16(uint16(i))
-	case "Int32":
-		return int32(uint32(i))
-	case "Int64":
-		return int64(i)
-	case "UInt8", "UInt16", "UInt32", "UInt64", "DateTime":
-		return i
+	case "DataSet":
+		return jsonDataSet(m.GetDatasetValue())
+	case "Template":
+		return jsonTemplate(m.GetTemplateValue())
+	}
+	i, isInt := integer(m)
+	if v, ok := jsonInteger(dt, i); ok {
+		return v
+	}
+	switch dt {
 	case "Float":
 		return jsonFloat(float64(m.GetFloatValue()))
 	case "Double":
@@ -351,6 +350,107 @@ func jsonValue(dt string, m *protobuf.Payload_Metric) any {
 		return v.StringValue
 	}
 	return nil
+}
+
+// jsonInteger reports an integer of the datatype dt: the low bits of the
+// datatype's width, so both encodings of a negative Int8 or Int16 read the same.
+func jsonInteger(dt string, i uint64) (any, bool) {
+	switch dt {
+	case "Int8":
+		return int8(uint8(i)), true
+	case "Int16":
+		return int16(uint16(i)), true
+	case "Int32":
+		return int32(uint32(i)), true
+	case "Int64":
+		return int64(i), true
+	case "UInt8", "UInt16", "UInt32", "UInt64", "DateTime":
+		return i, true
+	}
+	return nil, false
+}
+
+// jsonCell is a DataSet cell, a template parameter or a property value: the
+// integer they carry (u, in whichever of int_value and long_value is set) or
+// their other value.
+func jsonCell(dt string, u uint64, other any) any {
+	if v, ok := jsonInteger(dt, u); ok {
+		return v
+	}
+	return other
+}
+
+// templateMembers has the datatype of each member of the template definitions
+// seen in births, by definition and member name: in data messages, members
+// may omit it as other metrics do. Guarded by host.typesMu, like the rest of
+// what jsonValue needs.
+var templateMembers = map[string]string{}
+
+func jsonDataSet(ds *protobuf.Payload_DataSet) any {
+	types := []string{}
+	for _, t := range ds.GetTypes() {
+		types = append(types, datatypeName(t))
+	}
+	rows := [][]any{}
+	for _, row := range ds.GetRows() {
+		cells := []any{}
+		for i, c := range row.GetElements() {
+			u := uint64(c.GetIntValue())
+			if _, long := c.GetValue().(*protobuf.Payload_DataSet_DataSetValue_LongValue); long {
+				u = c.GetLongValue()
+			}
+			cells = append(cells, jsonCell(types[i], u, c.GetStringValue()))
+		}
+		rows = append(rows, cells)
+	}
+	return map[string]any{"columns": ds.GetColumns(), "types": types, "rows": rows}
+}
+
+func jsonTemplate(t *protobuf.Payload_Template) any {
+	params := []any{}
+	for _, p := range t.GetParameters() {
+		u := uint64(p.GetIntValue())
+		if _, long := p.GetValue().(*protobuf.Payload_Template_Parameter_LongValue); long {
+			u = p.GetLongValue()
+		}
+		dt := datatypeName(p.GetType())
+		params = append(params, map[string]any{"name": p.GetName(), "type": dt, "value": jsonCell(dt, u, p.GetStringValue())})
+	}
+	metrics := []any{}
+	for _, m := range t.GetMetrics() {
+		dt := datatypeName(m.GetDatatype())
+		if m.Datatype == nil {
+			dt = templateMembers[t.GetTemplateRef()+"\x00"+m.GetName()]
+		}
+		metrics = append(metrics, metricDoc(m, dt))
+	}
+	o := map[string]any{"isDefinition": t.GetIsDefinition(), "parameters": params, "metrics": metrics}
+	if t.GetVersion() != "" {
+		o["version"] = t.GetVersion()
+	}
+	if t.GetTemplateRef() != "" {
+		o["templateRef"] = t.GetTemplateRef()
+	}
+	return o
+}
+
+// metricDoc is the document of a metric whose datatype is dt.
+func metricDoc(m *protobuf.Payload_Metric, dt string) map[string]any {
+	doc := map[string]any{"name": m.GetName(), "datatype": dt, "value": jsonValue(dt, m)}
+	if ps := m.GetProperties(); len(ps.GetKeys()) > 0 {
+		props := map[string]any{}
+		for i, k := range ps.GetKeys() {
+			p := ps.GetValues()[i]
+			u := uint64(p.GetIntValue())
+			if _, long := p.GetValue().(*protobuf.Payload_PropertyValue_LongValue); long {
+				u = p.GetLongValue()
+			}
+			t := datatypeName(p.GetType())
+			props[k] = map[string]any{"type": t, "value": jsonCell(t, u, p.GetStringValue())}
+		}
+		doc["properties"] = props
+	}
+	return doc
 }
 
 // jsonFloat keeps NaN and infinities, which JSON has no number for, as null.
@@ -544,6 +644,11 @@ func (h *host) onMessage(m sparkplughost.InteropMessage) {
 			dt = datatypeName(pm.GetDatatype())
 			if birth {
 				h.datatypes[key] = dt
+				if t := pm.GetTemplateValue(); t.GetIsDefinition() {
+					for _, member := range t.GetMetrics() {
+						templateMembers[pm.GetName()+"\x00"+member.GetName()] = datatypeName(member.GetDatatype())
+					}
+				}
 			}
 		} else {
 			dt = h.datatypes[key]
@@ -554,7 +659,7 @@ func (h *host) onMessage(m sparkplughost.InteropMessage) {
 			}
 			continue
 		}
-		metrics = append(metrics, map[string]any{"name": pm.GetName(), "datatype": dt, "value": jsonValue(dt, pm)})
+		metrics = append(metrics, metricDoc(pm, dt))
 	}
 	h.typesMu.Unlock()
 

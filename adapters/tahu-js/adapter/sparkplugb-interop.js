@@ -119,7 +119,17 @@ function fixturePath(nameOrPath) {
 }
 
 function checkValue(where, dt, v) {
-    if (Object.prototype.hasOwnProperty.call(RANGES, dt)) {
+    if (dt === "DataSet") {
+        if (!v || !Array.isArray(v.columns) || !Array.isArray(v.types) || !Array.isArray(v.rows)) throw new FixtureError(`${where}: not a DataSet`);
+        for (const row of v.rows) {
+            if (!Array.isArray(row) || row.length !== v.types.length) throw new FixtureError(`${where}: a row has not one cell per column`);
+            row.forEach((cell, i) => checkValue(where, v.types[i], cell));
+        }
+    } else if (dt === "Template") {
+        if (!v || typeof v.isDefinition !== "boolean" || !Array.isArray(v.parameters) || !Array.isArray(v.metrics)) throw new FixtureError(`${where}: not a Template`);
+        v.parameters.forEach((p) => checkValue(where, p.type, p.value));
+        v.metrics.forEach((m) => checkValue(where, m.datatype, m.value));
+    } else if (Object.prototype.hasOwnProperty.call(RANGES, dt)) {
         const [lo, hi] = RANGES[dt];
         if (!Number.isInteger(v) || v < lo || v > hi) throw new FixtureError(`${where}: ${JSON.stringify(v)} is not a ${dt}`);
     } else if (dt === "Float" || dt === "Double") {
@@ -163,6 +173,7 @@ function loadFixture(nameOrPath) {
                 if (!Number.isInteger(m.alias) || m.alias < 1 || aliases.has(m.alias)) throw new FixtureError(`${where}: invalid or duplicate alias`);
                 aliases.add(m.alias);
                 checkValue(where, m.datatype, m.value);
+                for (const [key, p] of Object.entries(m.properties || {})) checkValue(`${where}, property ${key}`, p.type, p.value);
                 types.set(`${scope}\u0000${m.name}`, m.datatype);
             }
         }
@@ -200,6 +211,19 @@ function fromSpbValue(dt, v) {
     if (dt === "UInt32" && typeof v === "number" && v < 0) return v >>> 0;
     if (dt === "Int8") return (v << 24) >> 24;
     if (dt === "Int16") return (v << 16) >> 16;
+    return v;
+}
+
+// The sparkplug-payload form of a fixture value.
+function toSpbValue(dt, v) {
+    if (dt === "DataSet") return { numOfColumns: v.columns.length, columns: v.columns, types: v.types, rows: v.rows };
+    if (dt === "Template") {
+        const t = { isDefinition: v.isDefinition, parameters: v.parameters,
+            metrics: v.metrics.map((m) => ({ name: m.name, type: m.datatype, value: m.value })) };
+        if (v.version !== undefined) t.version = v.version;
+        if (v.templateRef !== undefined) t.templateRef = v.templateRef;
+        return t;
+    }
     return v;
 }
 
@@ -327,11 +351,13 @@ class Edge {
 
     // birthMetric: name, alias, datatype and value; dataMetric: the alias only.
     birthMetric(dev, meta) {
-        return { name: meta.name, alias: meta.alias, type: meta.datatype, value: this.values.get(this.key(dev, meta.name)), timestamp: ms() };
+        const m = { name: meta.name, alias: meta.alias, type: meta.datatype, value: toSpbValue(meta.datatype, this.values.get(this.key(dev, meta.name))), timestamp: ms() };
+        if (meta.properties) m.properties = meta.properties;
+        return m;
     }
 
     dataMetric(dev, meta) {
-        return { alias: meta.alias, type: meta.datatype, value: this.values.get(this.key(dev, meta.name)), timestamp: ms() };
+        return { alias: meta.alias, type: meta.datatype, value: toSpbValue(meta.datatype, this.values.get(this.key(dev, meta.name))), timestamp: ms() };
     }
 
     published(type, device, payload) {
@@ -586,7 +612,7 @@ function capabilities() {
         upstream: { name: "sparkplug-client", version: UPSTREAM_VERSION, license: "EPL-2.0", language: "JavaScript", independentEngine: true },
         roles: {
             edge: {
-                supported: true, fixtures: ["baseline", "scalars"], calls: EDGE_CALLS,
+                supported: true, fixtures: ["baseline", "scalars", "composite"], calls: EDGE_CALLS,
                 features: { aliases: true, rebirthCommand: true, writes: true, primaryHost: false, gracefulDeath: true },
             },
             host: { supported: false },

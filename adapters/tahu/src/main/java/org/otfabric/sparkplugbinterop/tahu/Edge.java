@@ -257,7 +257,7 @@ final class Edge implements MetricHandler, ClientCallback {
 						.timestamp(now).createMetric());
 				nb.addMetric(new MetricBuilder(REBIRTH, MetricDataType.Boolean, false).timestamp(now).createMetric());
 				for (Fixture.MetricDef d : fx.nodeMetrics) {
-					nb.addMetric(Values.metric(d.name(), d.datatype(), values.get(Fixture.NODE).get(d.name())));
+					nb.addMetric(Values.metric(d.name(), d.datatype(), values.get(Fixture.NODE).get(d.name()), d.properties()));
 				}
 				client.publishNodeBirth(nb);
 				aliasNames.clear();
@@ -281,7 +281,7 @@ final class Edge implements MetricHandler, ClientCallback {
 	private void deviceBirthMessage(String dev) throws Exception {
 		SparkplugBPayload p = new SparkplugBPayloadBuilder().setTimestamp(new Date()).createPayload();
 		for (Fixture.MetricDef d : fx.devices.get(dev)) {
-			p.addMetric(Values.metric(d.name(), d.datatype(), values.get(dev).get(d.name())));
+			p.addMetric(Values.metric(d.name(), d.datatype(), values.get(dev).get(d.name()), d.properties()));
 		}
 		client.publishDeviceBirth(dev, p);
 		learnAliases(dev, p.getMetrics());

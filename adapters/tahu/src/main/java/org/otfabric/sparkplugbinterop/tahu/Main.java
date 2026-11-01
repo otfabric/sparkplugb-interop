@@ -115,7 +115,7 @@ public final class Main {
 		ObjectNode roles = c.putObject("roles");
 		ObjectNode edge = roles.putObject("edge");
 		edge.put("supported", true);
-		edge.putArray("fixtures").add("baseline").add("scalars");
+		edge.putArray("fixtures").add("baseline").add("scalars").add("composite");
 		ArrayNode ec = edge.putArray("calls");
 		EDGE_CALLS.forEach(ec::add);
 		ObjectNode ef = edge.putObject("features");

@@ -5,19 +5,48 @@
   "description": "An edge node, its devices and metrics, and the data updates it publishes on request. docs/FIXTURES.md has the rules this schema cannot express; scripts/validate-fixtures.py checks them.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "name", "description", "group", "edgeNode", "node", "devices", "updates"],
+  "required": [
+    "schemaVersion",
+    "name",
+    "description",
+    "group",
+    "edgeNode",
+    "node",
+    "devices",
+    "updates"
+  ],
   "properties": {
-    "schemaVersion": {"const": "1.0"},
-    "name": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
-    "description": {"type": "string", "minLength": 1},
-    "group": {"$ref": "#/$defs/id"},
-    "edgeNode": {"$ref": "#/$defs/id"},
+    "schemaVersion": {
+      "const": "1.0"
+    },
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1
+    },
+    "group": {
+      "$ref": "#/$defs/id"
+    },
+    "edgeNode": {
+      "$ref": "#/$defs/id"
+    },
     "node": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["metrics"],
+      "required": [
+        "metrics"
+      ],
       "properties": {
-        "metrics": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/metric"}}
+        "metrics": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/metric"
+          }
+        }
       }
     },
     "devices": {
@@ -25,10 +54,21 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "metrics"],
+        "required": [
+          "id",
+          "metrics"
+        ],
         "properties": {
-          "id": {"$ref": "#/$defs/id"},
-          "metrics": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/metric"}}
+          "id": {
+            "$ref": "#/$defs/id"
+          },
+          "metrics": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/$defs/metric"
+            }
+          }
         }
       }
     },
@@ -38,44 +78,156 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["node", "devices"],
+        "required": [
+          "node",
+          "devices"
+        ],
         "properties": {
-          "node": {"type": "array", "items": {"$ref": "#/$defs/change"}},
+          "node": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/change"
+            }
+          },
           "devices": {
             "type": "object",
-            "propertyNames": {"$ref": "#/$defs/id"},
-            "additionalProperties": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/change"}}
+            "propertyNames": {
+              "$ref": "#/$defs/id"
+            },
+            "additionalProperties": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/change"
+              }
+            }
           }
         }
       }
     }
   },
   "$defs": {
-    "id": {"type": "string", "minLength": 1, "pattern": "^[^/+#]+$"},
-    "datatype": {
-      "enum": ["Int8", "Int16", "Int32", "Int64", "UInt8", "UInt16", "UInt32", "UInt64", "Float", "Double", "Boolean", "String", "DateTime", "Text"]
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[^/+#]+$"
     },
-    "value": {"type": ["number", "boolean", "string"]},
+    "datatype": {
+      "enum": [
+        "Int8",
+        "Int16",
+        "Int32",
+        "Int64",
+        "UInt8",
+        "UInt16",
+        "UInt32",
+        "UInt64",
+        "Float",
+        "Double",
+        "Boolean",
+        "String",
+        "DateTime",
+        "Text",
+        "DataSet",
+        "Template"
+      ]
+    },
+    "value": {
+      "type": [
+        "number",
+        "boolean",
+        "string",
+        "object"
+      ]
+    },
     "metric": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "alias", "datatype", "value"],
+      "required": [
+        "name",
+        "alias",
+        "datatype",
+        "value"
+      ],
       "properties": {
-        "name": {"type": "string", "minLength": 1},
-        "alias": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
-        "datatype": {"$ref": "#/$defs/datatype"},
-        "value": {"$ref": "#/$defs/value"},
-        "writable": {"type": "boolean"}
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "alias": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "datatype": {
+          "$ref": "#/$defs/datatype"
+        },
+        "value": {
+          "$ref": "#/$defs/value"
+        },
+        "writable": {
+          "type": "boolean"
+        },
+        "properties": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "type",
+              "value"
+            ],
+            "properties": {
+              "type": {
+                "$ref": "#/$defs/scalarDatatype"
+              },
+              "value": {
+                "type": [
+                  "number",
+                  "boolean",
+                  "string"
+                ]
+              }
+            }
+          }
+        }
       }
     },
     "change": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "value"],
+      "required": [
+        "name",
+        "value"
+      ],
       "properties": {
-        "name": {"type": "string", "minLength": 1},
-        "value": {"$ref": "#/$defs/value"}
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "value": {
+          "$ref": "#/$defs/value"
+        }
       }
+    },
+    "scalarDatatype": {
+      "enum": [
+        "Int8",
+        "Int16",
+        "Int32",
+        "Int64",
+        "UInt8",
+        "UInt16",
+        "UInt32",
+        "UInt64",
+        "Float",
+        "Double",
+        "Boolean",
+        "String",
+        "DateTime",
+        "Text"
+      ]
     }
   }
 }

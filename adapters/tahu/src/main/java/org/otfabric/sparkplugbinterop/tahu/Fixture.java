@@ -19,7 +19,7 @@ final class Fixture {
 	static final String DIR = System.getenv().getOrDefault("SPARKPLUGB_INTEROP_FIXTURES", "/fixtures");
 	static final String NODE = "";
 
-	record MetricDef(String name, long alias, String datatype, JsonNode value, boolean writable) {
+	record MetricDef(String name, long alias, String datatype, JsonNode value, JsonNode properties, boolean writable) {
 	}
 
 	record Change(String name, JsonNode value) {
@@ -189,6 +189,7 @@ final class Fixture {
 			String dt = text(m, "datatype");
 			try {
 				Values.check(where, dt, m.get("value"));
+				Values.checkProperties(where, m.get("properties"));
 			} catch (Values.Invalid e) {
 				throw new Invalid(e.getMessage());
 			}
@@ -197,7 +198,7 @@ final class Fixture {
 				throw new Invalid(where + ": writable is not a boolean");
 			}
 			types.put(key + "\u0000" + name, dt);
-			out.add(new MetricDef(name, a.asLong(), dt, m.get("value"), w != null && w.asBoolean()));
+			out.add(new MetricDef(name, a.asLong(), dt, m.get("value"), m.get("properties"), w != null && w.asBoolean()));
 		}
 		return out;
 	}

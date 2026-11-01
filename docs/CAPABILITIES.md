@@ -39,7 +39,7 @@ do it.
 | `upstream.version` | The upstream release the adapter is built on |
 | `upstream.independentEngine` | `false` when the Sparkplug engine is another adapter's (for example a binding of it) |
 | `roles.edge.fixtures` | The baked fixtures `edge` can be an edge node of; any other is exit 5 |
-| `roles.host.datatypes` | The datatypes a host decodes and reports; a test skips a fixture with another |
+| `roles.host.datatypes` | The datatypes a host decodes and reports; a test skips a fixture with another. A host with `DataSet` and `Template` also reports metric properties |
 | `roles.*.calls` | The [`call` operations](CONTAINER_CONTRACT.md#call) of the role |
 
 ## Edge features

@@ -26,8 +26,38 @@ RANGES = {
 RESERVED = ("Node Control/", "bdSeq")
 
 
+def check_dataset(where, value, errors):
+    if not isinstance(value, dict) or set(value) != {"columns", "types", "rows"}:
+        errors.append(f"{where}: a DataSet has columns, types and rows")
+        return
+    if len(value["columns"]) != len(value["types"]):
+        errors.append(f"{where}: columns and types differ in length")
+    for i, row in enumerate(value["rows"]):
+        if len(row) != len(value["types"]):
+            errors.append(f"{where}, row {i}: not one cell per column")
+            continue
+        for dt, cell in zip(value["types"], row):
+            check_value(f"{where}, row {i}", dt, cell, errors)
+
+
+def check_template(where, value, errors):
+    if not isinstance(value, dict) or not {"isDefinition", "parameters", "metrics"} <= set(value):
+        errors.append(f"{where}: a Template has isDefinition, parameters and metrics")
+        return
+    if value["isDefinition"] == ("templateRef" in value):
+        errors.append(f"{where}: a definition has no templateRef, an instance has one")
+    for p in value["parameters"]:
+        check_value(f"{where}, parameter {p['name']!r}", p["type"], p["value"], errors)
+    for m in value["metrics"]:
+        check_value(f"{where}, member {m['name']!r}", m["datatype"], m["value"], errors)
+
+
 def check_value(where, datatype, value, errors):
-    if datatype in RANGES:
+    if datatype == "DataSet":
+        check_dataset(where, value, errors)
+    elif datatype == "Template":
+        check_template(where, value, errors)
+    elif datatype in RANGES:
         lo, hi = RANGES[datatype]
         if isinstance(value, bool) or not isinstance(value, int) or not lo <= value <= hi:
             errors.append(f"{where}: {value!r} is not a {datatype} in [{lo}, {hi}]")
@@ -72,6 +102,8 @@ def check_rules(path, fx):
                 errors.append(f"{where}: alias {m['alias']} is already used by {aliases[m['alias']]}")
             aliases[m["alias"]] = where
             check_value(where, m["datatype"], m["value"], errors)
+            for key, p in m.get("properties", {}).items():
+                check_value(f"{where}, property {key!r}", p["type"], p["value"], errors)
             datatypes[(scope, m["name"])] = m["datatype"]
     for i, u in enumerate(fx["updates"]):
         if not u["node"] and not u["devices"]:

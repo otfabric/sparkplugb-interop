@@ -51,7 +51,7 @@ locally.
 ## Cross-stack matrix
 
 `make interop-brokers` runs every host against every edge node (including
-itself), on both fixtures, on each broker. For each pairing it checks the
+itself), on every fixture they share, on each broker. For each pairing it checks the
 births, every update, the writes, rebirth on request and by call, device
 death and birth, the host's `nodes` view, NDEATH on a clean stop, births
 after a restart, the will after a crash and the primary host's STATE. A step
@@ -125,7 +125,7 @@ same.
 | Stack | Encodes | Decodes |
 |-------|---------|---------|
 | Eclipse Tahu 1.0.21 (Java) | sign-extended | both: truncates to the width |
-| sparkplug-payload (tahu-js) 3.2.4 | sign-extended | sign-extended only: a width-sized Int8 of -8 reads as 248 |
+| sparkplug-payload 1.0.3, in sparkplug-client (tahu-js) 3.2.4 | sign-extended | sign-extended only: a width-sized Int8 of -8 reads as 248 |
 | SparkplugNet 1.4.1 | sign-extended | sign-extended only: a width-sized value raises `OverflowException` and the whole payload is dropped |
 | pysparkplug 0.6.1 | width-sized | width-sized only: a sign-extended value raises `OverflowError` and the whole payload is dropped |
 | srad 0.5.0 | width-sized | both: truncates to the width |
@@ -148,6 +148,35 @@ for an Int8. No stack sends these, and a stricter decoder may reject them.
 
 The ambiguity is worth raising with the Eclipse Sparkplug maintainers; nothing
 has been filed from here.
+
+### Int8 and Int16 inside DataSets, templates and properties
+
+The `composite` fixture shows that each stack uses one form everywhere it
+carries a signed integer, not only in a metric's value, and that a host
+decodes those places as it decodes metrics. It runs where the stacks have
+these values: Tahu, tahu-js and SparkplugNet as edges, Tahu, SparkplugNet and
+sparkplughost as hosts. pysparkplug has none of them. srad has templates and
+properties but no DataSet, and its templates are generated from Rust types, so
+it does not declare the fixture.
+
+### SparkplugNet host drops properties
+
+SparkplugNet 1.4.1 copies no `properties` in
+`PayloadConverter.ConvertVersionBMetric`: a host gets the metric without them.
+
+### Tahu host leaves out a Template addressed by alias
+
+A Template in a data message that has only an alias has no name, and Tahu 1.0.21
+looks up the datatypes of its members under `/<member>`, which fails when they
+carry none. Metrics of data messages should not carry a datatype, and the Tahu
+edge omits them. The metric is left out of the decoded payload, with a warning.
+
+### SparkplugNet sends an empty template_ref
+
+The SparkplugNet 1.4.1 `Template` defaults `TemplateRef` to the empty string and
+sends it on a definition too, which `[tck-id-payloads-template-definition-ref]`
+says omits it. Hosts in this repository report an empty `version` or
+`templateRef` as absent, because Tahu's decoder gives both as empty strings.
 
 ### Tahu encodes UInt32 in long_value
 
