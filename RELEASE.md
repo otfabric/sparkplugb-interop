@@ -23,6 +23,17 @@ Tags are immutable. A fix is a new version.
 
 ---
 
+## v0.3.1
+
+**Date:** 2026-11-01
+**Previous release:** v0.3.0
+
+### Changed
+
+- Upstream issues and proposed fixes are linked: `UPSTREAM.md` in the SparkplugNet, Tahu, pysparkplug and srad adapters, `docs/COMPATIBILITY.md`, and the evidence column of `tests/known-bugs.tsv`, which `results.json` carries. The adapters, the container contract and the fixtures do not change.
+
+---
+
 ## v0.3.0
 
 **Date:** 2026-11-01

@@ -100,6 +100,8 @@ in the run of the same commit that the push started.
 
 ## Findings
 
+Upstream reports and proposed fixes, per adapter: [SparkplugNet](../adapters/sparkplugnet/UPSTREAM.md), [Tahu](../adapters/tahu/UPSTREAM.md), [pysparkplug](../adapters/pysparkplug/UPSTREAM.md), [srad](../adapters/srad/UPSTREAM.md).
+
 ### Int8 and Int16 are encoded two ways
 
 **Classification: specification ambiguity and interoperability
@@ -185,10 +187,14 @@ SparkplugNet 1.4.1 reads a UInt32 DataSet cell, property or parameter from
 so the matrix does not show it; a consumer that encodes to the specification
 reads 0 on that host.
 
+Reported in [SparkplugNet#129](https://github.com/SeppPenner/SparkplugNet/issues/129), proposed fix [#134](https://github.com/SeppPenner/SparkplugNet/pull/134).
+
 ### SparkplugNet host drops properties
 
 SparkplugNet 1.4.1 copies no `properties` in
 `PayloadConverter.ConvertVersionBMetric`: a host gets the metric without them.
+
+Reported in [SparkplugNet#127](https://github.com/SeppPenner/SparkplugNet/issues/127), proposed fix [#132](https://github.com/SeppPenner/SparkplugNet/pull/132).
 
 ### Tahu host leaves out a Template addressed by alias
 
@@ -197,12 +203,16 @@ looks up the datatypes of its members under `/<member>`, which fails when they
 carry none. Metrics of data messages should not carry a datatype, and the Tahu
 edge omits them. The metric is left out of the decoded payload, with a warning.
 
+Reported in [tahu#465](https://github.com/eclipse-tahu/tahu/issues/465), proposed fix [#466](https://github.com/eclipse-tahu/tahu/pull/466). It shows between real stacks too: a Tahu edge against a Tahu host on the `composite` fixture.
+
 ### SparkplugNet sends an empty template_ref
 
 The SparkplugNet 1.4.1 `Template` defaults `TemplateRef` to the empty string and
 sends it on a definition too, which `[tck-id-payloads-template-definition-ref]`
 says omits it. Hosts in this repository report an empty `version` or
 `templateRef` as absent, because Tahu's decoder gives both as empty strings.
+
+Reported in [SparkplugNet#128](https://github.com/SeppPenner/SparkplugNet/issues/128), proposed fix [#133](https://github.com/SeppPenner/SparkplugNet/pull/133).
 
 ### Tahu encodes UInt32 in long_value
 
@@ -266,6 +276,8 @@ through a LINQ iterator that is never enumerated, so dead nodes and devices
 stay online. It also resolves no aliases (`aliasResolution` false) and
 tracks no `seq` (`seqCheck` false).
 
+Dead nodes: reported in [SparkplugNet#126](https://github.com/SeppPenner/SparkplugNet/issues/126), proposed fix [#130](https://github.com/SeppPenner/SparkplugNet/pull/130).
+
 ### SparkplugNet edge drops device writes
 
 SparkplugNet 1.4.1 filters the metrics of a DCMD against the node's known
@@ -274,6 +286,8 @@ device write, or a write addressed by alias (srad sends them), is dropped.
 Its rebirth publishes NDEATH first and it does not act on
 `Node Control/Rebirth` itself (`rebirthCommand` false), and it subscribes to
 the Sparkplug 2.2 STATE topic, so `--primary-host` is not supported.
+
+Reported in [SparkplugNet#114](https://github.com/SeppPenner/SparkplugNet/issues/114), proposed fix [#131](https://github.com/SeppPenner/SparkplugNet/pull/131).
 
 ### SparkplugNet sends an empty password
 
