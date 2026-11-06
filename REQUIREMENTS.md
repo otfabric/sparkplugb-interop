@@ -20,7 +20,11 @@ not the Eclipse Sparkplug TCK.
 
 - R1.1 This repository does not import, build, link against or depend on any
   library under test, and contains no test logic or expectation specific to
-  one. In particular it knows nothing about `otfabric/go-sparkplugb`.
+  one. In particular it knows nothing about `otfabric/go-sparkplugb`. CI checks
+  this. The one exception is `own/` with its workflow: images of OT Fabric's own
+  stacks, published for others to test against (`own/go-sparkplugb/README.md`).
+  The rest of the repository does not know them, and they are not part of a
+  release.
 - R1.2 A consumer depends on published images, pinned broker references and
   the documented contract only. It does not need a checkout of this
   repository to run its tests.

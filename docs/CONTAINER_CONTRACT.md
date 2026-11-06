@@ -1,6 +1,6 @@
 # Container contract
 
-Version: **0.2 (draft)**. `contract_version` in [versions.yaml](../versions.yaml).
+Version: **0.3 (draft)**. `contract_version` in [versions.yaml](../versions.yaml).
 
 Every adapter image exposes the same commands, flags, JSON documents and exit
 codes. Consumers depend on this document, not on any adapter's source. Until
@@ -29,7 +29,7 @@ bumps the major version and an addition the minor version. Documents carry
 
 | Item | Value |
 |------|-------|
-| Image | `ghcr.io/otfabric/sparkplugb-interop-<adapter>` |
+| Image | `ghcr.io/otfabric/sparkplugb-interop-<adapter>`; OT Fabric's own stack is the adapter `otfabric` |
 | Entrypoint | `sparkplugb-interop` (`/usr/local/bin/sparkplugb-interop`) |
 | Default command | the adapter's first role: `edge`, or `host` for a host-only adapter |
 | Protocol | Sparkplug B 3.0.0 over MQTT 3.1.1, plain TCP |
@@ -120,7 +120,9 @@ While running, it:
 
 - answers an NCMD that writes `Node Control/Rebirth` true with a rebirth:
   NBIRTH (`seq` 0, same `bdSeq`) and every DBIRTH again, as the current
-  values;
+  values. Sparkplug fixes no order among the DBIRTHs of a rebirth, so they
+  may come in any order, each device once, with `seq` 1, 2, ...; fixture
+  order is required of the first births only;
 - applies an NCMD or DCMD that writes a metric the fixture marks
   `writable`, and reports the new value in an NDATA or DDATA with that one
   metric. A write to any other metric is ignored. Each command is a
@@ -179,7 +181,7 @@ On the socket, `call` writes one JSON line, `{"operation": "...",
 | Operation | `--payload` | What it does | `ok` when |
 |-----------|-------------|--------------|-----------|
 | `publish-data` | `{"update": N}` | applies `updates[N]` of the fixture and publishes its node metrics as one NDATA, then the metrics of each of its devices as one DDATA, in fixture order | every message was published; `result` is `{"published": ["NDATA", "DDATA/pump1", ...]}` |
-| `rebirth` | `{}` | publishes NBIRTH (`seq` 0, same `bdSeq`) and every DBIRTH of an online device | published |
+| `rebirth` | `{}` | publishes NBIRTH (`seq` 0, same `bdSeq`) and every DBIRTH of an online device, in any order | published |
 | `device-death` | `{"device": "ID"}` | publishes DDEATH for the device and takes it offline | published |
 | `device-birth` | `{"device": "ID"}` | publishes DBIRTH for an offline device with its current values | published |
 

@@ -30,7 +30,7 @@ def convert(log, active=(), reproduced=()):
         (work / "results.log").write_text("".join(x + "\n" for x in log))
         (work / "active").write_text("".join("%s\n" % x for x in active))
         (work / "reproduced").write_text("".join(x + "\n" for x in reproduced))
-        (work / "implementations.tsv").write_text("a\t1\timage-a\nb\t2\timage-b\nmosquitto\t-\tbroker@sha256:%s\n" % ("0" * 64))
+        (work / "implementations.tsv").write_text("a\t1\timage-a\t{}\nb\t2\timage-b\t{}\nmosquitto\t-\tbroker@sha256:%s\t\n" % ("0" * 64))
         with mock.patch.object(interop_result, "repo_digest", return_value=None):
             doc = rl.convert(work, "2026-10-30T00:00:00Z", "2026-10-30T00:00:01Z", "make interop", WAIVERS)
     doc["summary"] = interop_result.summarize(doc["results"])
@@ -90,6 +90,15 @@ class Convert(unittest.TestCase):
     def test_unknown_outcome_is_refused(self):
         with self.assertRaises(SystemExit):
             convert([line("case.read.one", "skip")])
+
+
+class Implementations(unittest.TestCase):
+    def test_an_image_outside_versions_yaml_says_what_it_is(self):
+        seen = '{"name":"stack","version":"v1.2.3","license":"MIT","language":"Go","independentEngine":false}'
+        got = rl.implementations(["b\tv1.2.3\timage-b\t" + seen, "a\t1\timage-a\t{}"], {"a": {"version": "1", "license": "L"}},
+                                 digest=lambda _: None)
+        self.assertEqual(got[0], {"name": "b", "version": "v1.2.3", "independent": False, "upstream": "stack", "license": "MIT"})
+        self.assertEqual(got[1], {"name": "a", "version": "1", "independent": True, "license": "L"})
 
 
 class Files(unittest.TestCase):

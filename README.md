@@ -41,6 +41,7 @@ Evaluated and left out: Tahu C and Node-RED. See [PLAN.md](PLAN.md).
   - [Table of contents](#table-of-contents)
   - [What this repository is, and is not](#what-this-repository-is-and-is-not)
   - [Quick start](#quick-start)
+  - [OT Fabric's own stack](#ot-fabrics-own-stack)
   - [Using the images from a library's tests](#using-the-images-from-a-librarys-tests)
   - [Repository layout](#repository-layout)
   - [Development](#development)
@@ -53,7 +54,8 @@ It owns the reference implementations, their adapters, the fixtures, the
 container contract, the images and the self-tests that show the references
 agree with each other on every broker.
 
-It does not contain, import, build or know about any library under test.
+It does not contain, import, build or know about any library under test, apart
+from [one image](#ot-fabrics-own-stack) kept out of its releases.
 [otfabric/go-sparkplugb](https://github.com/otfabric/go-sparkplugb) is a
 consumer: it pulls the images and owns its own scenarios, assertions and
 compatibility claims. A passing self-test here says the *references*
@@ -104,6 +106,19 @@ in [schemas/](schemas/).
 [interop-result-v1](schemas/interop-result-v1.schema.json). Only `pass` counts as passing: a run with
 no pass, or with a known bug that no longer reproduces, fails.
 
+`docker compose up -d --wait` starts a broker, a Tahu host and a Tahu edge
+node from [compose.yaml](compose.yaml) for local work, on loopback only.
+
+## OT Fabric's own stack
+
+`ghcr.io/otfabric/sparkplugb-interop-otfabric` is go-sparkplugb behind the same
+contract, as an edge node and as a primary host application, so you can test
+your stack against ours the way we test ours against yours. Despite the name it
+shares with the reference images, it is not an independent implementation and
+not part of a release of this repository, so its tags are go-sparkplugb versions
+and `manifest.json` does not list it: see
+[own/go-sparkplugb/README.md](own/go-sparkplugb/README.md).
+
 ## Using the images from a library's tests
 
 A consumer needs Docker, the image references and its own test code. It does
@@ -148,6 +163,7 @@ sparkplugb-interop/
 │   ├── srad/            Rust adapter: Dockerfile, Cargo.toml, src/
 │   ├── tahu-js/         JavaScript adapter: Dockerfile, package.json, adapter/
 │   └── sparkplughost/   Go adapter: Dockerfile, go.mod, main.go, overlay/
+├── own/go-sparkplugb/   OT Fabric's own stack behind the contract, outside the releases
 ├── fixtures/
 │   ├── schema/          JSON Schema of the fixture format
 │   ├── baseline/        an edge node with two devices and writable metrics
@@ -157,6 +173,7 @@ sparkplugb-interop/
 ├── scripts/             validate, smoke, cross-stack self-test, upstream candidates, release manifest
 ├── docs/                contract, fixtures, capabilities, compatibility
 ├── versions.yaml        every upstream pin, broker and base image digest
+├── compose.yaml         a broker, a host and an edge node for local work
 └── Makefile
 ```
 

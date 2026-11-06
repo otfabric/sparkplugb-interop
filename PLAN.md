@@ -33,6 +33,14 @@ with everything green in CI on both architectures.
 - A role for applications that are not the primary host.
 - Reordering by the host (the reorder timeout) without timing dependence.
 - MQTT 5 and TLS once a consumer needs them.
+## v0.4.0 (released)
+
+The scripts take an image through `ADAPTER_IMAGE_<adapter>`, and `results.json`
+records whether an implementation is independent from what its image says.
+`own/go-sparkplugb` and the manual workflow "Own stack (go-sparkplugb)" build
+`sparkplugb-interop-otfabric`, OT Fabric's own stack, outside the releases. The
+reference adapters, the container contract and the fixtures do not change.
+
 ## Evaluated and left out
 
 - Eclipse Tahu C (`tahu/c`): a protobuf and payload library without an MQTT

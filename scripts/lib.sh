@@ -72,7 +72,12 @@ infra() { FAIL=$((FAIL + 1)); record infra-error "$*"; log "FAIL: $*"; return 0;
 # check <label> <command...>: ok when the command succeeds.
 check() { local label="$1"; shift; if "$@" >/dev/null 2>&1; then ok "${label}"; else fail "${label}"; fi; }
 
-image_of() { echo "${REGISTRY}/sparkplugb-interop-$1:${VERSION}"; }
+# image_of <adapter>: ADAPTER_IMAGE_<adapter> names an image outside the release
+# set, which this repository's scripts know nothing about.
+image_of() {
+    local override="ADAPTER_IMAGE_${1//-/_}"
+    if [[ -n "${!override:-}" ]]; then echo "${!override}"; else echo "${REGISTRY}/sparkplugb-interop-$1:${VERSION}"; fi
+}
 
 # broker_image <name>: the pinned reference of versions.yaml, through
 # BROKER_REGISTRY. BROKER_IMAGE (a Docker Hub reference) replaces the pin of

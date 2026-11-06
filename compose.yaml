@@ -1,0 +1,50 @@
+# A broker, a host application and an edge node for local work. The broker's
+# port is published on loopback only: it is an unauthenticated MQTT broker that
+# accepts any publish, and must not be reachable from a plant network.
+#
+#   docker compose up -d --wait        # waits for readiness
+#   docker compose exec edge sparkplugb-interop call publish-data --payload '{"update": 0}'
+#   docker compose logs host
+#   docker compose down
+#
+# SPARKPLUGB_INTEROP_VERSION selects the image tag (default: dev, the local build),
+# SPARKPLUGB_INTEROP_HOST and SPARKPLUGB_INTEROP_EDGE the adapters (default: tahu),
+# SPARKPLUGB_INTEROP_FIXTURE the fixture (default: baseline). The broker is the
+# Mosquitto that versions.yaml pins.
+
+x-role: &role
+  depends_on:
+    broker:
+      condition: service_healthy
+  healthcheck:
+    test: ["CMD", "test", "-f", "/run/sparkplugb-interop/ready"]
+    interval: 2s
+    timeout: 2s
+    retries: 30
+    start_period: 20s
+  stop_grace_period: 10s
+
+services:
+  broker:
+    image: docker.io/library/eclipse-mosquitto:2.1.2-alpine@sha256:860aeb5d63ce509508f6dcfb2bc8a1c1dd2bc60555b562b45ce90e52d8dabb0f
+    command: ["mosquitto", "-c", "/mosquitto-no-auth.conf"]
+    ports:
+      - "127.0.0.1:1883:1883"
+    healthcheck:
+      test: ["CMD", "mosquitto_pub", "-h", "localhost", "-t", "interop/probe", "-m", "ready", "-q", "1"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+  host:
+    <<: *role
+    image: ghcr.io/otfabric/sparkplugb-interop-${SPARKPLUGB_INTEROP_HOST:-tahu}:${SPARKPLUGB_INTEROP_VERSION:-dev}
+    command: ["host", "--broker", "tcp://broker:1883", "--host-id", "compose-host"]
+
+  edge:
+    <<: *role
+    image: ghcr.io/otfabric/sparkplugb-interop-${SPARKPLUGB_INTEROP_EDGE:-tahu}:${SPARKPLUGB_INTEROP_VERSION:-dev}
+    command: ["edge", "--broker", "tcp://broker:1883", "--fixture", "${SPARKPLUGB_INTEROP_FIXTURE:-baseline}"]
+    depends_on:
+      host:
+        condition: service_healthy

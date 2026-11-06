@@ -36,7 +36,7 @@ them with `print-fixture`.
 |-------|---------|
 | `group`, `edgeNode` | The topic IDs; `edge --group` and `--edge-node` override them |
 | `node.metrics` | The node metrics of NBIRTH, in this order, after the edge's own `bdSeq` and `Node Control/Rebirth` |
-| `devices[].metrics` | The metrics of each device's DBIRTH, in this order; devices are born in this order |
+| `devices[].metrics` | The metrics of each device's DBIRTH, in this order; devices are born in this order (a rebirth may republish their DBIRTHs in any order) |
 | `writable` | A host may write the metric with NCMD (node) or DCMD (device); the edge applies it and reports it |
 | `updates[N]` | What `call publish-data {"update": N}` changes: one NDATA with the `node` changes (none when empty), then one DDATA per device in `devices`, in fixture order |
 

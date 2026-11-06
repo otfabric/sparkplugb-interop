@@ -3,8 +3,8 @@
 # The Dockerfiles and adapter build files are the source of truth for a build:
 # scripts/check-versions.sh fails when this file disagrees with them.
 
-interop_version: "0.3.1"
-contract_version: "0.2"        # docs/CONTAINER_CONTRACT.md (draft until 1.0); documents carry schemaVersion "1.0"
+interop_version: "0.4.0"
+contract_version: "0.3"        # docs/CONTAINER_CONTRACT.md (draft until 1.0); documents carry schemaVersion "1.0"
 fixture_schema: "1.0"          # fixtures/schema/sparkplugb-fixture.schema.json
 
 protocol:
@@ -50,7 +50,7 @@ base_images:
   rust: "rust:1.95-slim-trixie@sha256:e14e87345b4d5964ddcc3491d27ee046a0f23820f340c3c1e24da6880141f7c0"   # srad (build)
   node: "node:22-trixie-slim@sha256:8eb619e402eaede1748a3c8173bffab391592812e85136452f781741c7242ddf"   # tahu-js
   golang: "golang:1.25.14-trixie@sha256:2c4c60ef415fbfa5e90300722293bef36c5e63fae17570ce18f580af933dbd73"   # sparkplughost (build)
-  debian: "debian:trixie-slim@sha256:62bd423aeee912639ca8ee681c2b762cb3e25137e0a92b20be455898a9f034ad"   # srad, sparkplughost
+  debian: "debian:trixie-slim@sha256:62bd423aeee912639ca8ee681c2b762cb3e25137e0a92b20be455898a9f034ad"   # srad, sparkplughost, own/go-sparkplugb
 
 implementations:
   tahu:
@@ -125,3 +125,21 @@ implementations:
     language: "Go"
     independent_engine: true
     roles: [host]
+
+# OT Fabric's own stacks. Not independent implementations, not in a release of
+# this repository or its manifest.json: see own/<library>/README.md.
+own_implementations:
+  otfabric:
+    upstream: "go-sparkplugb"
+    repository: "https://github.com/otfabric/go-sparkplugb"
+    artifact: "github.com/otfabric/go-sparkplugb (Go module)"
+    version: "latest release, resolved when the image is built by hand"
+    license: "MIT"
+    language: "Go"
+    independent_engine: false
+    roles: [edge, host]
+    image: "ghcr.io/otfabric/sparkplugb-interop-otfabric"
+    build: "own/go-sparkplugb"
+    base_images:
+      golang: "golang:1.27.2-trixie@sha256:47667934874913a449b96faa7ef4777fa285d9ec29126ee80ed61c45b7cccf0e"
+      debian: "debian:trixie-slim@sha256:62bd423aeee912639ca8ee681c2b762cb3e25137e0a92b20be455898a9f034ad"
