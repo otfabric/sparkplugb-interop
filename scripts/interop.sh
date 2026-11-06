@@ -16,7 +16,11 @@
 #              VERBOSE=1, REPORT_DIR (keeps the normalized host messages of
 #              every pairing, and writes results.json, interop-result-v1: only
 #              a pass counts as passing), EVENT_TIMEOUT, WAIT_TIMEOUT,
-#              CONNECT_TIMEOUT_MS (MQTT connection of the roles, 45000).
+#              CONNECT_TIMEOUT_MS (MQTT connection of the roles, 45000),
+#              ADAPTER_IMAGE_<adapter> (an image outside the release set).
+#
+# When an adapter declares upstream.independentEngine false (OT Fabric's own
+# stack, own/), only the pairings with such an adapter run.
 
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -39,9 +43,21 @@ for a in "${ADAPTERS[@]}"; do
     CAPS[$a]=$(docker run --rm "$(image_of "$a")" print-capabilities 2>/dev/null) \
         || { log "cannot read the capabilities of $a"; exit 1; }
     VERSIONS[$a]=$(jq -r '.upstream.version' <<<"${CAPS[$a]}")
-    printf '%s\t%s\t%s\n' "$a" "${VERSIONS[$a]}" "$(image_of "$a")" >> "${WORK}/implementations.tsv"
+    printf '%s\t%s\t%s\t%s\n' "$a" "${VERSIONS[$a]}" "$(image_of "$a")" "$(jq -c '.upstream' <<<"${CAPS[$a]}")" >> "${WORK}/implementations.tsv"
 done
-printf '%s\t-\t%s\n' "${BROKER}" "$(broker_image "${BROKER}")" >> "${WORK}/implementations.tsv"
+printf '%s\t-\t%s\t\n' "${BROKER}" "$(broker_image "${BROKER}")" >> "${WORK}/implementations.tsv"
+
+# FOCUS: the adapters that are not independent implementations (OT Fabric's
+# own stack, own/). When there is one, only the pairings with one of them
+# run: the references were already checked against each other.
+FOCUS=""
+for a in "${ADAPTERS[@]}"; do
+    jq -e '.upstream.independentEngine == false' <<<"${CAPS[$a]}" >/dev/null 2>&1 && FOCUS="${FOCUS} $a"
+done
+in_scope() {  # in_scope <host> <edge>
+    [[ -z "${FOCUS}" || " ${FOCUS} " == *" $1 "* || " ${FOCUS} " == *" $2 "* ]]
+}
+[[ -z "${FOCUS}" ]] || log "only the pairings with:${FOCUS}"
 
 has() { jq -e "$2" <<<"${CAPS[$1]}" >/dev/null 2>&1; }  # has <adapter> <jq predicate>
 
@@ -151,13 +167,23 @@ at() { scenario "${FIXTURE}.$1" "host=${HA}" "edge=${EA}" "broker=${BROKER}"; }
 # the messages as a set: each carries its seq, which is what orders Sparkplug
 # messages, and MQTT orders messages per topic only (NanoMQ does deliver
 # messages of different topics out of publishing order).
+#
+# With DBIRTH_SEQS set to a JSON array of seqs (a rebirth), the DBIRTHs with
+# those seqs may come in any device order: Sparkplug 3.0.0 asks a rebirth for
+# "a complete BIRTH sequence including the NBIRTH and DBIRTH(s)" and fixes no
+# order among the DBIRTHs. Each device must still be born once, with the
+# fixture's metrics, and the seqs used must be exactly the expected ones.
 compare() {
-    local label="$1" step="$2" got want n=${#EXPECTED[@]}
+    local label="$1" step="$2" got want n=${#EXPECTED[@]} relax="${DBIRTH_SEQS:-[]}" any seqs
     at "${3:-$2}"
     got=$(wait_events "${H}" ".event == \"message\" and .edgeNode == \"${EDGE_NODE}\"" "${n}" \
         | jq -cS --slurpfile fx "${FIXTURE_FILE}" "\$fx[0] as \$fx | ${NORMALIZE}" | head -n "${n}" | LC_ALL=C sort)
     want=$(printf '%s\n' "${EXPECTED[@]}" | jq -cS 'walk(if type == "number" then . + 0 else . end)' | LC_ALL=C sort)
-    if [[ "${got}" == "${want}" ]]; then
+    any='if .type == "DBIRTH" and (.seq as $s | $r | index($s)) then .seq = "rebirth" else . end'
+    seqs='[.[] | select(.type == "DBIRTH") | .seq] | sort'
+    if [[ "${got}" == "${want}" ]] || { [[ "${relax}" != "[]" ]] \
+        && [[ "$(jq -cS --argjson r "${relax}" "${any}" <<<"${got}" | LC_ALL=C sort)" == "$(jq -cS --argjson r "${relax}" "${any}" <<<"${want}" | LC_ALL=C sort)" ]] \
+        && [[ "$(jq -cs "${seqs}" <<<"${got}")" == "$(jq -cs "${seqs}" <<<"${want}")" ]]; }; then
         outcome 0 "${PAIR}: ${label}" "${step}"
     else
         outcome 1 "${PAIR}: ${label}" "${step}"
@@ -281,7 +307,7 @@ pairing() {  # pairing <host adapter> <edge adapter> <fixture>
     if has "${EA}" '.roles.edge.features.rebirthCommand' && has "${HA}" '.roles.host.calls | index("request-rebirth")'; then
         call "${H}" request-rebirth "{\"group\": \"interop\", \"edgeNode\": \"${EDGE_NODE}\"}" >/dev/null
         local out; out=$(births 0); expect "${out}"; SEQ=$(grep -c . <<<"${out}")
-        compare "rebirth on request" rebirth-command
+        DBIRTH_SEQS=$(jq -sc '[.[] | select(.type == "DBIRTH") | .seq]' <<<"${out}") compare "rebirth on request" rebirth-command
         at rebirth-command-bdseq
         if [[ "$(bdseq_of NBIRTH 2)" == "${bdseq}" ]]; then ok "${PAIR}: rebirth keeps bdSeq"
         else outcome 1 "${PAIR}: rebirth keeps bdSeq ${bdseq} (got $(bdseq_of NBIRTH 2))" rebirth-command; fi
@@ -312,7 +338,7 @@ pairing() {  # pairing <host adapter> <edge adapter> <fixture>
     if has "${EA}" '.roles.edge.calls | index("rebirth")'; then
         call "${E}" rebirth >/dev/null
         local out; out=$(births 0); expect "${out}"; SEQ=$(grep -c . <<<"${out}")
-        compare "rebirth" rebirth-call
+        DBIRTH_SEQS=$(jq -sc '[.[] | select(.type == "DBIRTH") | .seq]' <<<"${out}") compare "rebirth" rebirth-call
     else skip "${PAIR}: rebirth call"; fi
 
     # 7. What the host tracks.
@@ -393,6 +419,7 @@ for HA in "${ADAPTERS[@]}"; do
     has "${HA}" '.roles.host.supported' || continue
     for EA in "${ADAPTERS[@]}"; do
         has "${EA}" '.roles.edge.supported' || continue
+        in_scope "${HA}" "${EA}" || continue
         for FIXTURE in $(jq -r '.roles.edge.fixtures[]' <<<"${CAPS[$EA]}"); do
             at pairing
             if [[ ! -f "${ROOT}/fixtures/${FIXTURE}/fixture.json" ]]; then fail "${EA} declares an unknown fixture ${FIXTURE}"; continue; fi

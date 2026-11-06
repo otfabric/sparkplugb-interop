@@ -15,11 +15,37 @@ ending with a `---` line, and no `---` line inside a section.
 
 Tags are immutable. A fix is a new version.
 
+The `sparkplugb-interop-otfabric` image is not part of these releases. It has its own
+manual workflow and no releases (`own/go-sparkplugb/README.md`).
+
 | What changed | Version |
 |--------------|---------|
 | Contract or fixture format changed incompatibly | major |
 | New operation, event, fixture, adapter or document field | minor |
 | Upstream pin, broker pin, base image or bug fix with unchanged contract | patch |
+
+---
+
+## v0.4.0
+
+**Date:** 2026-11-06
+**Previous release:** v0.3.1
+
+### Added
+
+- **`own/go-sparkplugb/`** and the manual workflow **Own stack (go-sparkplugb)**: go-sparkplugb, OT Fabric's own stack, behind the container contract as an edge node (`edge.Node`) and as the primary host application (`host.App`), published as `ghcr.io/otfabric/sparkplugb-interop-otfabric:<go-sparkplugb version>` and `:latest` for others to test against. It is not an independent implementation (`upstream.independentEngine: false`) and not part of this or any release: `manifest.json` does not list it.
+- **`ADAPTER_IMAGE_<adapter>`**: `scripts/smoke.sh` and `scripts/interop.sh` take an image from outside the release set (a `-` in the adapter name is a `_` in the variable).
+- **`compose.yaml`**: a broker, a reference host and a reference edge node for local work, as in the other harnesses.
+
+### Changed
+
+- `results.json` takes `independent`, and for an image outside `versions.yaml` its licence and upstream name, from what the image says of itself.
+- `scripts/interop.sh` runs only the pairings with an adapter whose `upstream.independentEngine` is `false`, when there is one among its adapters: the references were checked against each other already.
+- The R1 check of CI also covers `compose.yaml`.
+- **Contract 0.3:** the DBIRTHs of a rebirth, on an NCMD or on `call rebirth`, may come in any order, each device once, with `seq` 1, 2, ...; fixture order is required of the first births only. Sparkplug 3.0.0 asks a rebirth for "a complete BIRTH sequence" and fixes no order among the DBIRTHs. `scripts/interop.sh` checks that. Every reference adapter already meets 0.2, which is stricter, so none changes; a consumer that checks the order of a rebirth's DBIRTHs should stop.
+- `tests/known-bugs.tsv`: the entries for the pysparkplug host on the scalars fixture and the Tahu host on the baseline fixture also apply with the `otfabric` edge, which shows the same behaviour as the edges already listed.
+
+The reference adapters and the fixtures do not change.
 
 ---
 

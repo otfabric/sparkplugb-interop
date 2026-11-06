@@ -2,7 +2,7 @@
 
 ## Ground rules
 
-- **Nothing here may know about a library under test.** No imports, no build steps, no expectations, no names from `go-sparkplugb` or any other consumer. See [REQUIREMENTS.md](REQUIREMENTS.md) R1; CI greps for it.
+- **Nothing here may know about a library under test.** No imports, no build steps, no expectations, no names from `go-sparkplugb` or any other consumer. See [REQUIREMENTS.md](REQUIREMENTS.md) R1; CI greps for it. `own/` is the one exception: the image of OT Fabric's own stack (`own/go-sparkplugb/README.md`).
 - **The contract is the product.** Adapters differ inside; their commands, events, documents and exit codes are identical. A change to [docs/CONTAINER_CONTRACT.md](docs/CONTAINER_CONTRACT.md) or [docs/FIXTURES.md](docs/FIXTURES.md) lands in every published adapter in the same change.
 - **Declare only what is tested.** A capability is `true` when the self-tests exercise it for that adapter, and only when the upstream library does it itself.
 - **Pin everything.** Upstreams by exact version with a lock file, base images and brokers by digest, all mirrored in [versions.yaml](versions.yaml).

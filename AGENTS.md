@@ -2,7 +2,7 @@
 
 ## What this is
 
-Independent Sparkplug B 3.0.0 edge node and host application implementations (Eclipse Tahu, pysparkplug, SparkplugNet, srad, sparkplughost) in containers behind one command-line contract, with deterministic fixtures, tested across MQTT brokers and used as oracles by go-sparkplugb and sparkplugbctl. Nothing here depends on go-sparkplugb. Profile: **interoperability**.
+Independent Sparkplug B 3.0.0 edge node and host application implementations (Eclipse Tahu, pysparkplug, SparkplugNet, srad, sparkplughost) in containers behind one command-line contract, with deterministic fixtures, tested across MQTT brokers and used as oracles by go-sparkplugb and sparkplugbctl. Nothing here depends on go-sparkplugb, except `own/`, the one image of OT Fabric's own stack (`own/go-sparkplugb/README.md`). Profile: **interoperability**.
 
 ## Organisation standards
 

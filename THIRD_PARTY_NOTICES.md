@@ -6,6 +6,19 @@ It is copied into its image as `/licenses/THIRD_PARTY_NOTICES.md`, next to the
 licence texts of everything the image bundles (`/licenses/<name>/`) and the
 list of bundled modules (`/licenses/BUNDLED-MODULES.txt`).
 
+## Image `sparkplugb-interop-otfabric`
+
+Built by hand from `own/go-sparkplugb/`, not part of a release (`own/go-sparkplugb/README.md`).
+This file is its `/licenses/THIRD_PARTY_NOTICES.md`.
+
+| Component | Licence | In the image |
+|-----------|---------|--------------|
+| [go-sparkplugb](https://github.com/otfabric/go-sparkplugb), the latest release when built | MIT | `/licenses/github.com/otfabric/go-sparkplugb/` |
+| Eclipse Paho MQTT Go client; gorilla/websocket; golang.org/x/net, golang.org/x/sync; protobuf-go | EPL-2.0 OR BSD-3-Clause; BSD-2-Clause; BSD-3-Clause; BSD-3-Clause | `/licenses/<module>/`, listed in `/licenses/BUNDLED-MODULES.txt` |
+| The Go standard library, Go 1.27.2 | BSD-3-Clause | `/licenses/go/LICENSE` |
+| Debian trixie-slim base image | Various | Debian's `/usr/share/doc/*/copyright` |
+| The adapter | MIT | `/licenses/sparkplugb-interop/LICENSE` |
+
 ## What is licensed how
 
 | Part | Licence |

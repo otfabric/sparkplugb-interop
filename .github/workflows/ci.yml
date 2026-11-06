@@ -58,7 +58,7 @@ jobs:
         # REQUIREMENTS.md R1: adapters, fixtures, scripts and schemas must not
         # know any consumer. Documentation may name consumers as examples.
         run: |
-          if grep -rInE 'go-sparkplugb|sparkplugbctl|otfabric/go-' adapters fixtures schemas scripts tests Makefile; then
+          if grep -rInE 'go-sparkplugb|sparkplugbctl|otfabric/go-' adapters fixtures schemas scripts tests Makefile compose.yaml; then
             echo "::error::consumer-specific reference found"; exit 1
           fi
 
