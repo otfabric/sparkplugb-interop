@@ -3,7 +3,7 @@ module github.com/otfabric/sparkplugb-interop/own/go-sparkplugb
 go 1.26.0
 
 require (
-	github.com/otfabric/go-sparkplugb v0.3.4
+	github.com/otfabric/go-sparkplugb v0.4.2
 	google.golang.org/protobuf v1.36.12
 )
 
