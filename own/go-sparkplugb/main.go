@@ -111,19 +111,14 @@ func diag(format string, args ...any) {
 }
 
 // stderrLogger is the sparkplugb.Logger of both roles: the library's log goes
-// to stderr. onWarn, when set, sees every warning first.
-type stderrLogger struct {
-	onWarn func(format string, args []any)
-}
+// to stderr.
+type stderrLogger struct{}
 
 func (stderrLogger) Debugf(string, ...any) {}
 func (stderrLogger) Infof(format string, args ...any) {
 	diag("go-sparkplugb: "+format, args...)
 }
-func (l stderrLogger) Warnf(format string, args ...any) {
-	if l.onWarn != nil {
-		l.onWarn(format, args)
-	}
+func (stderrLogger) Warnf(format string, args ...any) {
 	diag("go-sparkplugb: warning: "+format, args...)
 }
 func (stderrLogger) Errorf(format string, args ...any) {

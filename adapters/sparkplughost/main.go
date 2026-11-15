@@ -386,15 +386,25 @@ func jsonCell(dt string, u uint64, other any) any {
 // what jsonValue needs.
 var templateMembers = map[string]string{}
 
+// jsonDataSet is the document of a DataSet. Protobuf does not tie the number
+// of elements of a row to the number of types: an element past the last type
+// has no datatype to read it by, and is reported as null.
 func jsonDataSet(ds *protobuf.Payload_DataSet) any {
 	types := []string{}
 	for _, t := range ds.GetTypes() {
 		types = append(types, datatypeName(t))
 	}
 	rows := [][]any{}
-	for _, row := range ds.GetRows() {
+	for r, row := range ds.GetRows() {
 		cells := []any{}
+		if n := len(row.GetElements()); n > len(types) {
+			diag("DataSet row %d has %d elements for %d types: the elements past the types are reported as null", r, n, len(types))
+		}
 		for i, c := range row.GetElements() {
+			if i >= len(types) {
+				cells = append(cells, nil)
+				continue
+			}
 			u := uint64(c.GetIntValue())
 			if _, long := c.GetValue().(*protobuf.Payload_DataSet_DataSetValue_LongValue); long {
 				u = c.GetLongValue()
@@ -434,13 +444,24 @@ func jsonTemplate(t *protobuf.Payload_Template) any {
 	return o
 }
 
-// metricDoc is the document of a metric whose datatype is dt.
+// metricDoc is the document of a metric whose datatype is dt. Protobuf does
+// not tie the number of property values to the number of keys: a key without
+// a value is reported with a null type and value, and a value without a key
+// is not reported.
 func metricDoc(m *protobuf.Payload_Metric, dt string) map[string]any {
 	doc := map[string]any{"name": m.GetName(), "datatype": dt, "value": jsonValue(dt, m)}
 	if ps := m.GetProperties(); len(ps.GetKeys()) > 0 {
 		props := map[string]any{}
+		values := ps.GetValues()
+		if len(values) < len(ps.GetKeys()) {
+			diag("metric %s: %d property keys, %d values: the keys without a value are reported as null", m.GetName(), len(ps.GetKeys()), len(values))
+		}
 		for i, k := range ps.GetKeys() {
-			p := ps.GetValues()[i]
+			if i >= len(values) {
+				props[k] = map[string]any{"type": nil, "value": nil}
+				continue
+			}
+			p := values[i]
 			u := uint64(p.GetIntValue())
 			if _, long := p.GetValue().(*protobuf.Payload_PropertyValue_LongValue); long {
 				u = p.GetLongValue()
@@ -623,45 +644,49 @@ type host struct {
 
 func (h *host) onMessage(m sparkplughost.InteropMessage) {
 	birth := m.Type == "NBIRTH" || m.Type == "DBIRTH"
-	h.typesMu.Lock()
-	if m.Type == "NBIRTH" {
-		for k := range h.datatypes {
-			if k.group == m.GroupID && k.node == m.EdgeNodeID {
-				delete(h.datatypes, k)
-			}
-		}
-	}
 	var bdSeq any
 	metrics := []map[string]any{}
-	for _, pm := range m.Payload.GetMetrics() {
-		if pm.Name == nil {
-			diag("%s %s/%s/%s: metric with alias %d resolves to no name; not reported", m.Type, m.GroupID, m.EdgeNodeID, m.DeviceID, pm.GetAlias())
-			continue
-		}
-		key := metricKey{m.GroupID, m.EdgeNodeID, m.DeviceID, pm.GetName()}
-		dt := ""
-		if pm.Datatype != nil {
-			dt = datatypeName(pm.GetDatatype())
-			if birth {
-				h.datatypes[key] = dt
-				if t := pm.GetTemplateValue(); t.GetIsDefinition() {
-					for _, member := range t.GetMetrics() {
-						templateMembers[pm.GetName()+"\x00"+member.GetName()] = datatypeName(member.GetDatatype())
-					}
+	// The lock is released however the documents end, so that the next
+	// message is reported (the overlay goes on with it, see interopProcessor).
+	func() {
+		h.typesMu.Lock()
+		defer h.typesMu.Unlock()
+		if m.Type == "NBIRTH" {
+			for k := range h.datatypes {
+				if k.group == m.GroupID && k.node == m.EdgeNodeID {
+					delete(h.datatypes, k)
 				}
 			}
-		} else {
-			dt = h.datatypes[key]
 		}
-		if pm.GetName() == "bdSeq" && m.DeviceID == "" {
-			if v, ok := integer(pm); ok {
-				bdSeq = int64(v)
+		for _, pm := range m.Payload.GetMetrics() {
+			if pm.Name == nil {
+				diag("%s %s/%s/%s: metric with alias %d resolves to no name; not reported", m.Type, m.GroupID, m.EdgeNodeID, m.DeviceID, pm.GetAlias())
+				continue
 			}
-			continue
+			key := metricKey{m.GroupID, m.EdgeNodeID, m.DeviceID, pm.GetName()}
+			dt := ""
+			if pm.Datatype != nil {
+				dt = datatypeName(pm.GetDatatype())
+				if birth {
+					h.datatypes[key] = dt
+					if t := pm.GetTemplateValue(); t.GetIsDefinition() {
+						for _, member := range t.GetMetrics() {
+							templateMembers[pm.GetName()+"\x00"+member.GetName()] = datatypeName(member.GetDatatype())
+						}
+					}
+				}
+			} else {
+				dt = h.datatypes[key]
+			}
+			if pm.GetName() == "bdSeq" && m.DeviceID == "" {
+				if v, ok := integer(pm); ok {
+					bdSeq = int64(v)
+				}
+				continue
+			}
+			metrics = append(metrics, metricDoc(pm, dt))
 		}
-		metrics = append(metrics, metricDoc(pm, dt))
-	}
-	h.typesMu.Unlock()
+	}()
 
 	var seq any
 	if m.Payload.Seq != nil && m.Type != "NDEATH" {

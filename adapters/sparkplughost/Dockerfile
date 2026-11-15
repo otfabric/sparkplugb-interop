@@ -29,13 +29,15 @@ RUN set -eu; \
 
 # The modules are vendored from the verified module cache, then
 # overlay/zz_interop.go is added to the sparkplughost package: it exposes the
-# messages and nodes the host keeps private. No upstream file is changed.
-COPY adapters/sparkplughost/main.go /src/
+# messages and nodes the host keeps private. No upstream file is changed. The
+# tests of the adapter and of the overlay run before the build.
+COPY adapters/sparkplughost/main.go adapters/sparkplughost/main_test.go /src/
 COPY adapters/sparkplughost/overlay/ /src/overlay/
 RUN set -eu; \
     GOFLAGS=-mod=mod go mod vendor; \
-    cp overlay/zz_interop.go vendor/github.com/EvergenEnergy/sparkplughost/; \
-    go vet ./; \
+    cp overlay/zz_interop.go overlay/zz_interop_test.go vendor/github.com/EvergenEnergy/sparkplughost/; \
+    go vet ./ ./vendor/github.com/EvergenEnergy/sparkplughost/; \
+    go test ./ ./vendor/github.com/EvergenEnergy/sparkplughost/; \
     go build -trimpath -ldflags="-s -w" -o /out/sparkplugb-interop .; \
     /out/sparkplugb-interop version | grep -q "(sparkplughost ${SPARKPLUGHOST_VERSION})"
 

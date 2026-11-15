@@ -61,8 +61,12 @@ The host reports each message from the library's callbacks, after the library
 applied it: names resolved from aliases and datatypes taken from the births by
 the library (`host.App.GetNode`), `seq` and `bdSeq` from the state it keeps.
 The library holds messages that a broker delivers out of order and asks for a
-rebirth on a gap or an unknown node; its warning for that request is the
-`rebirth-requested` event, as the library has no callback for it.
+rebirth on a gap or an unknown node. It has no callback for that request, so
+the adapter takes it from the transport: an NCMD with `Node Control/Rebirth`
+true that the host publishes, and that no `request-rebirth` or `send-command`
+call made, is the `rebirth-requested` event, with the reason `unknown-node`
+when the host holds no birth of the edge node as the NCMD goes out and
+`seq-gap` otherwise. The library's log text is not read.
 
 ## Why it is apart from the other adapters
 

@@ -30,8 +30,10 @@ below, and the steps it explains count as known bugs instead of failures.
 | NanoMQ | 0.25.7 | `emqx/nanomq:0.25.7`, by digest |
 
 The base images are pinned by multi-arch index digest. Every pin is in
-[versions.yaml](../versions.yaml), and `scripts/check-versions.sh` checks that
-it matches the Dockerfiles and the Makefile.
+[versions.yaml](../versions.yaml), with the upstream commit of each version
+(`revision`) and the lock file above (`lock`), and `scripts/check-versions.sh`
+checks that it matches the Dockerfiles (also `own/*/Dockerfile`), the lock
+files and the Makefile. `results.json` carries each `revision`.
 
 The **Upstream** workflow (`.github/workflows/upstream.yml`, daily and on
 demand) resolves the latest release of each adapter's library (Maven

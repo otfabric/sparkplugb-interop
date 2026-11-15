@@ -26,6 +26,28 @@ manual workflow and no releases (`own/go-sparkplugb/README.md`).
 
 ---
 
+## v0.4.1
+
+**Date:** 2026-11-15
+**Previous release:** v0.4.0
+
+### Fixed
+
+- **`sparkplughost`: a property key without a value is reported with `{"type": null, "value": null}`,** and a DataSet element past the last of the DataSet's types is reported as `null`, each with a line on stderr. Protobuf ties neither the number of property values to the number of keys nor the elements of a row to the types; the other fields of the metric and the message are reported as they arrived. A value without a key is not reported, as before.
+- **`sparkplughost`: the host goes on with the next message when reporting one does not return normally;** the overlay logs it with its stack, and the adapter's lock of the datatypes is released either way.
+- **`sparkplughost`: the image build runs the tests of the adapter and of the overlay** (`main_test.go`, `overlay/zz_interop_test.go`) before it builds.
+- **Own stack (`own/go-sparkplugb`, not in a release): the host writes `rebirth-requested` again** for the rebirths the library requests on its own. The adapter read them from the library's log text, whose format changed in go-sparkplugb v0.6.0; it now takes them from the transport: an NCMD with `Node Control/Rebirth` true that no `request-rebirth` or `send-command` call published, with `unknown-node` when the host holds no birth of the edge node and `seq-gap` otherwise. A test with a transport without a broker covers both reasons and the two calls.
+
+### Changed
+
+- **`versions.yaml`: each implementation has `revision`, the upstream commit of its version, and `lock`, the lock file that pins its package and every dependency by hash.** `results.json` carries the `revision` of each implementation; `manifest.json` does not change. `scripts/check-versions.sh` fails on a missing or malformed `revision`, a `lock` that is not a file of the repository or does not pin the version, and a base image digest of `own/*/Dockerfile` that is not in its `own_implementations` entry, or the other way round. `scripts/test_check_versions.py` covers each case.
+- CI, the release and the own-stack workflow install `jsonschema==4.26.0`, as does the container fallback of `make validate` and `make documents`.
+- CONTRIBUTING.md says what the release workflow runs and that a moved pin moves `revision` too.
+
+The contract, the fixtures, the upstream pins and the base images do not change. Container exit codes stay as the contract defines them; the organisation table is a separate decision.
+
+---
+
 ## v0.4.0
 
 **Date:** 2026-11-06

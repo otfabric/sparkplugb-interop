@@ -7,20 +7,16 @@ import (
 	"fmt"
 	"os/signal"
 	"sort"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/otfabric/go-sparkplugb/host"
 	"github.com/otfabric/go-sparkplugb/mqtt"
+	"github.com/otfabric/go-sparkplugb/payload"
 	pb "github.com/otfabric/go-sparkplugb/proto"
+	"github.com/otfabric/go-sparkplugb/topic"
 )
-
-// rebirthWarning is the format of go-sparkplugb's warning when its host asks
-// an edge node for a rebirth on its own (host.App.askRebirth): the library has
-// no callback for it, so its log is the rebirth-requested event.
-const rebirthWarning = "%s/%s: %s — requesting rebirth"
 
 // hostRole is the primary host application: go-sparkplugb's host.App.
 type hostRole struct {
@@ -32,33 +28,20 @@ type hostRole struct {
 
 func runHost(f flags) int {
 	hostID := f.str("host-id", "")
-	h := &hostRole{members: map[string]string{}}
 	lost := make(chan error, 1)
 	paho := mqtt.NewPahoTransport()
 	paho.ConnectTimeout = time.Duration(f.int("connect-timeout-ms", 10000)) * time.Millisecond
-	tr := &tap{inner: paho, onLost: func(err error) {
+	h, err := newHostRole(paho, f, func(err error) {
 		select {
 		case lost <- err:
 		default:
 		}
-	}}
-	app, err := host.New(tr, host.Config{
-		HostID:        hostID,
-		BrokerURL:     f.str("broker", ""),
-		ClientID:      f.str("client-id", fmt.Sprintf("%s-host-%s", adapter, hostID)),
-		Logger:        stderrLogger{onWarn: h.warned},
-		OnNodeBirth:   h.nodeBirth,
-		OnDeviceBirth: h.deviceBirth,
-		OnNodeData:    h.nodeData,
-		OnDeviceData:  h.deviceData,
-		OnNodeDeath:   h.nodeDeath,
-		OnDeviceDeath: h.deviceDeath,
 	})
 	if err != nil {
 		diag("host: %v", err)
 		return exitFailed
 	}
-	h.app = app
+	app := h.app
 	if err := serveControl(f.str("control-socket", defaultSocket), map[string]handler{
 		"send-command": h.sendCommand, "request-rebirth": h.requestRebirth, "nodes": h.nodes,
 	}); err != nil {
@@ -95,15 +78,72 @@ func runHost(f flags) int {
 	}
 }
 
-func (h *hostRole) warned(format string, args []any) {
-	if format != rebirthWarning || len(args) != 3 {
+// newHostRole is the host role on the transport inner, through the tap that
+// reports a connection lost on its own to onLost and the rebirths the host
+// requests on its own as rebirth-requested events.
+func newHostRole(inner mqtt.Transport, f flags, onLost func(error)) (*hostRole, error) {
+	hostID := f.str("host-id", "")
+	h := &hostRole{members: map[string]string{}}
+	tr := &tap{inner: inner, onPublish: h.published, onLost: onLost}
+	app, err := host.New(tr, host.Config{
+		HostID:        hostID,
+		BrokerURL:     f.str("broker", ""),
+		ClientID:      f.str("client-id", fmt.Sprintf("%s-host-%s", adapter, hostID)),
+		Logger:        stderrLogger{},
+		OnNodeBirth:   h.nodeBirth,
+		OnDeviceBirth: h.deviceBirth,
+		OnNodeData:    h.nodeData,
+		OnDeviceData:  h.deviceData,
+		OnNodeDeath:   h.nodeDeath,
+		OnDeviceDeath: h.deviceDeath,
+	})
+	if err != nil {
+		return nil, err
+	}
+	h.app = app
+	return h, nil
+}
+
+// callKey marks the context of the publishes of the host's operations
+// (send-command, request-rebirth): see published.
+type callKey struct{}
+
+func forCall(ctx context.Context) context.Context { return context.WithValue(ctx, callKey{}, true) }
+
+// published sees each message the host published. go-sparkplugb has no
+// callback for the rebirths its host requests on its own (a seq gap, a
+// reorder timeout, a message of an edge node without a birth): an NCMD with
+// Node Control/Rebirth true that no operation published is one, the
+// rebirth-requested event. Its reason is unknown-node when the host holds no
+// birth of the edge node as the request goes out, seq-gap otherwise.
+func (h *hostRole) published(ctx context.Context, t string, data []byte) {
+	if ctx.Value(callKey{}) != nil {
+		return
+	}
+	tp, err := topic.Parse(t)
+	if err != nil || tp.Type != topic.NCMD {
+		return
+	}
+	p, err := payload.Decode(data)
+	if err != nil || !asksRebirth(p.GetMetrics()) {
 		return
 	}
 	reason := "seq-gap"
-	if r, _ := args[2].(string); strings.Contains(r, "before its NBIRTH") {
+	if h.app.GetNode(tp.GroupID, tp.EdgeNodeID) == nil {
 		reason = "unknown-node"
 	}
-	emit("rebirth-requested", field{"group", args[0]}, field{"edgeNode", args[1]}, field{"reason", reason})
+	emit("rebirth-requested", field{"group", tp.GroupID}, field{"edgeNode", tp.EdgeNodeID}, field{"reason", reason})
+}
+
+// asksRebirth reports whether the metrics of an NCMD set Node Control/Rebirth
+// true.
+func asksRebirth(metrics []*pb.Payload_Metric) bool {
+	for _, m := range metrics {
+		if m.GetName() == rebirthMetric && m.GetBooleanValue() {
+			return true
+		}
+	}
+	return false
 }
 
 // message writes the "message" event. The handlers run one after the other,
@@ -237,7 +277,7 @@ func (h *hostRole) sendCommand(p map[string]any) (any, error) {
 		}
 		metrics = append(metrics, pm)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), opTimeout)
+	ctx, cancel := context.WithTimeout(forCall(context.Background()), opTimeout)
 	defer cancel()
 	if device != "" {
 		if err := h.app.SendDeviceCommand(ctx, group, node, device, metrics); err != nil {
@@ -256,7 +296,7 @@ func (h *hostRole) requestRebirth(p map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), opTimeout)
+	ctx, cancel := context.WithTimeout(forCall(context.Background()), opTimeout)
 	defer cancel()
 	if err := h.app.RequestRebirth(ctx, group, node); err != nil {
 		return nil, notConnected(err)

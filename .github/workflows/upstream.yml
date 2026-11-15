@@ -150,7 +150,8 @@ jobs:
             ### To update
 
             - **Library:** the pin is in the adapter's Dockerfile, its build files and
-              `versions.yaml` (`scripts/check-versions.sh` checks they agree):
+              `versions.yaml`, with `revision`, the upstream commit of the version
+              (`scripts/check-versions.sh` checks they agree):
               tahu `TAHU_VERSION`, `pom.xml`, `dependencies.sha256`; pysparkplug
               `PYSPARKPLUG_VERSION`, `requirements.in`, `requirements.txt` (`make lock-pysparkplug`);
               sparkplugnet `SPARKPLUGNET_VERSION`, `SparkplugbInterop.csproj`, `packages.lock.json`;
