@@ -26,7 +26,7 @@ Run `make` for all targets.
 
 ## Moving an upstream pin
 
-1. Change the version in the Dockerfile (`ARG <NAME>_VERSION`), regenerate the lock file inside Docker (`make lock-pysparkplug` is the model) and change `versions.yaml`; `scripts/check-versions.sh` must pass.
+1. Change the version in the Dockerfile (`ARG <NAME>_VERSION`), regenerate the lock file inside Docker (`make lock-pysparkplug` is the model) and change `versions.yaml`: `version`, and `revision`, the upstream commit of that version (its tag, or the commit the package records when there is no tag). `scripts/check-versions.sh` must pass: it also checks that `lock` names a file that pins the version.
 2. `make ci`.
 3. Record the new version, and anything it changed, in [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md), [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and [RELEASE.md](RELEASE.md).
 
@@ -85,6 +85,6 @@ By contributing you agree that your contributions are licensed under the MIT lic
 | Push to a branch | none | nothing; dispatch `ci.yml` to test a branch without a pull request |
 | Push to `main` | `policy.yml` | the light checks; the merged commit was tested as the pull request's merge commit |
 | Schedule | `ci.yml`, `upstream.yml` | the scheduled runs, on `main` |
-| Release | `release.yml` | the release workflow tests the release commit again |
+| Release | `release.yml` | on an amd64 and an arm64 runner: `scripts/check-versions.sh`, the fixtures against their schema, `interop_version` and the notes of the tag, every image built (the sparkplughost build runs its Go tests), smoke, cross-stack self-test and document schemas; then those images are pushed and joined into the release. Shellcheck and the reference grep run in `ci.yml` only, the unit tests of the scripts in `make validate` only |
 
 Documentation means an added or modified `*.md` file outside `.github/`, `testdata/` and `vendor/`, other than `AGENTS.md` and `CLAUDE.md`. A deleted or renamed document, or any other file, runs everything. `OT Fabric Required Checks` fails unless every job that applies succeeded; its summary lists them.

@@ -2,8 +2,10 @@
 # Upstream pins and image digests are release inputs; nothing floats.
 # The Dockerfiles and adapter build files are the source of truth for a build:
 # scripts/check-versions.sh fails when this file disagrees with them.
+# Each implementation names the upstream commit of its version (revision) and
+# the lock file that pins its package and every dependency by hash (lock).
 
-interop_version: "0.4.0"
+interop_version: "0.4.1"
 contract_version: "0.3"        # docs/CONTAINER_CONTRACT.md (draft until 1.0); documents carry schemaVersion "1.0"
 fixture_schema: "1.0"          # fixtures/schema/sparkplugb-fixture.schema.json
 
@@ -60,6 +62,8 @@ implementations:
     repository: "https://github.com/eclipse-tahu/tahu"
     artifact: "org.eclipse.tahu:tahu-edge, org.eclipse.tahu:tahu-host"
     version: "1.0.21"
+    revision: "902f5e0d4ac041778ceb84376d4f85c2c8570425"   # tag v1.0.21
+    lock: "adapters/tahu/dependencies.sha256"   # every jar of the runtime class path by sha256
     license: "EPL-2.0"
     language: "Java"
     independent_engine: true
@@ -72,6 +76,8 @@ implementations:
     repository: "https://github.com/matteosox/pysparkplug"
     artifact: "pysparkplug (PyPI)"
     version: "0.6.1"
+    revision: "957b5b844e3b229f8896cb3d786745e6ed196968"   # tag v0.6.1; information, the build installs the wheel
+    lock: "adapters/pysparkplug/requirements.txt"   # every package by version and sha256
     license: "Apache-2.0"
     language: "Python"
     independent_engine: true
@@ -84,6 +90,8 @@ implementations:
     repository: "https://github.com/SeppPenner/SparkplugNet"
     artifact: "SparkplugNet (NuGet)"
     version: "1.4.1"
+    revision: "4fb3c64a1f4e101771270084b8ceed8cd6d59626"   # tag 1.4.1; information, the build restores the NuGet package
+    lock: "adapters/sparkplugnet/adapter/packages.lock.json"   # every package by version and content hash (sha512)
     license: "MIT"
     language: "C#"
     independent_engine: true
@@ -97,6 +105,8 @@ implementations:
     repository: "https://github.com/dpazj/srad"
     artifact: "srad (crates.io)"
     version: "0.5.0"
+    revision: "e82a1c5118bd91d9f50e1c12cc1472d4ff1e06fa"   # tag srad-v0.5.0; information, the build fetches the crate
+    lock: "adapters/srad/Cargo.lock"   # every crate by version and sha256 checksum
     license: "MIT OR Apache-2.0"
     language: "Rust"
     independent_engine: true
@@ -109,6 +119,8 @@ implementations:
     repository: "https://github.com/eclipse-tahu/tahu"
     artifact: "sparkplug-client (npm)"
     version: "3.2.4"
+    revision: "eac6cc24d83638878b96d85bb980bd922cd479ab"   # npm gitHead of sparkplug-client 3.2.4, which has no tag; information, the build installs the tarball
+    lock: "adapters/tahu-js/package-lock.json"   # every npm package by version and integrity hash (sha512)
     license: "EPL-2.0"
     language: "JavaScript"
     independent_engine: true
@@ -121,6 +133,8 @@ implementations:
     repository: "https://github.com/EvergenEnergy/sparkplughost"
     artifact: "github.com/EvergenEnergy/sparkplughost (Go module)"
     version: "v0.4.0"
+    revision: "cd775fc7fcb8c65fe8aab23c05b880a6942f18da"   # tag v0.4.0, the origin the Go module proxy records
+    lock: "adapters/sparkplughost/go.sum"   # with go.mod: every module by version and checksum
     license: "Apache-2.0"
     language: "Go"
     independent_engine: true

@@ -33,6 +33,13 @@ with everything green in CI on both architectures.
 - A role for applications that are not the primary host.
 - Reordering by the host (the reorder timeout) without timing dependence.
 - MQTT 5 and TLS once a consumer needs them.
+## v0.4.1
+
+The sparkplughost host reports a property key without a value and a DataSet
+element without a type as null, and its image build runs the adapter's tests.
+`versions.yaml` records the upstream commit and the lock file of each
+implementation. The contract, the fixtures and the pins do not change.
+
 ## v0.4.0 (released)
 
 The scripts take an image through `ADAPTER_IMAGE_<adapter>`, and `results.json`

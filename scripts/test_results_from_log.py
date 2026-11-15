@@ -4,6 +4,7 @@
 
 import importlib.util
 import os
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -108,6 +109,17 @@ class Files(unittest.TestCase):
 
     def test_pins_of_this_repository(self):
         self.assertTrue(rl.pins())
+
+    def test_every_adapter_records_its_revision(self):
+        pins = rl.pins()
+        makefile = (Path(HERE).parent / "Makefile").read_text()
+        adapters = re.search(r"^ADAPTERS \?= (.+)$", makefile, re.M).group(1).split()
+        self.assertTrue(adapters)
+        for name in adapters:
+            self.assertRegex(pins[name].get("revision", ""), r"^[0-9a-f]{40}$", name)
+        rows = ["%s\t-\timage@sha256:%s\t{}" % (name, "0" * 64) for name in adapters]
+        for got in rl.implementations(rows, pins, digest=lambda _: None):
+            self.assertEqual(got["revision"], pins[got["name"]]["revision"], got["name"])
 
 
 if __name__ == "__main__":

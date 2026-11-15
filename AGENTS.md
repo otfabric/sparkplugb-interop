@@ -14,7 +14,7 @@ This repository follows **otfabric/engineering policy 1.6**, profile **interoper
 |---|---|
 | Container commands, documents, exit codes | docs/CONTAINER_CONTRACT.md (`contract_version` in versions.yaml) |
 | What each stack can do | docs/CAPABILITIES.md |
-| Pins (upstream revision, source hash, base image digests) | versions.yaml, checked by `make validate` |
+| Pins (upstream version and revision, the lock file that holds the package hashes, base image digests) | versions.yaml, checked by `make validate` |
 | Fixtures | fixtures/, docs/FIXTURES.md |
 | Expected deviations of the stacks | tests/known-bugs.tsv |
 | Results | docs/COMPATIBILITY.md |

@@ -68,7 +68,7 @@ validate: unittests ## Validate every fixture against the schema and the cross-f
 	else \
 		echo "(jsonschema not installed locally: running the validator in a container)"; \
 		$(RETRY) docker run --rm -v "$(CURDIR):/work:ro" -w /work $(TOOLS_REGISTRY)/library/python:3.12-slim \
-			sh -c 'pip install -q --root-user-action=ignore jsonschema && python scripts/validate-fixtures.py --require-schema'; \
+			sh -c 'pip install -q --root-user-action=ignore jsonschema==4.26.0 && python scripts/validate-fixtures.py --require-schema'; \
 	fi
 
 unittests: ## Unit tests of the result scripts
@@ -82,7 +82,7 @@ documents: ## Run the self-tests keeping every document, and validate them again
 		python3 scripts/validate-documents.py reports; \
 	else \
 		$(RETRY) docker run --rm -v "$(CURDIR):/work:ro" -w /work $(TOOLS_REGISTRY)/library/python:3.12-slim \
-			sh -c 'pip install -q --root-user-action=ignore jsonschema && python scripts/validate-documents.py reports'; \
+			sh -c 'pip install -q --root-user-action=ignore jsonschema==4.26.0 && python scripts/validate-documents.py reports'; \
 	fi
 
 lint: ## Shellcheck the scripts (the installed shellcheck, or a container when there is none)

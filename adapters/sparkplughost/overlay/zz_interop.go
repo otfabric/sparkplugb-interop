@@ -16,6 +16,9 @@ package sparkplughost
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"log/slog"
+	"runtime/debug"
 	"sort"
 	"sync"
 	"time"
@@ -51,7 +54,8 @@ type InteropNode struct {
 // InteropHooks are called by the host's processing goroutines.
 type InteropHooks struct {
 	// OnMessage is called once per received message, in the order received,
-	// after the host processed it (or buffered it to reorder).
+	// after the host processed it (or buffered it to reorder). If it does not
+	// return normally, that is logged and the next message is reported.
 	OnMessage func(InteropMessage)
 	// OnRebirthRequest is called when the host requests a rebirth on its own:
 	// reason "seq-gap" from the reorder timeout, "unknown-node" otherwise.
@@ -74,9 +78,10 @@ func (r interopRequester) requestNodeRebirth(d EdgeNodeDescriptor) error {
 }
 
 type interopProcessor struct {
-	next messageProcessor
-	mgr  *edgeNodeManager
-	hook func(InteropMessage)
+	next   messageProcessor
+	mgr    *edgeNodeManager
+	hook   func(InteropMessage)
+	logger *slog.Logger
 }
 
 func (p *interopProcessor) processMessage(msg sparkplugMessage) {
@@ -95,13 +100,26 @@ func (p *interopProcessor) processMessage(msg sparkplugMessage) {
 		}
 	}
 	p.mgr.mu.Unlock()
-	p.hook(InteropMessage{
+	p.report(InteropMessage{
 		Type:       string(msg.topic.messageType),
 		GroupID:    msg.topic.groupID,
 		EdgeNodeID: msg.topic.edgeNodeID,
 		DeviceID:   msg.topic.deviceID,
 		Payload:    msg.payload,
 	})
+}
+
+// report calls the hook. A hook that does not return normally is logged with
+// its stack, and the host goes on with the next message, as when it returns.
+func (p *interopProcessor) report(m InteropMessage) {
+	defer func() {
+		if r := recover(); r != nil {
+			p.logger.Error("the OnMessage hook did not return normally; the message is not reported",
+				"type", m.Type, "group", m.GroupID, "edge_node", m.EdgeNodeID, "device", m.DeviceID,
+				"value", fmt.Sprint(r), "stack", string(debug.Stack()))
+		}
+	}()
+	p.hook(m)
 }
 
 // InteropStart connects like Run, with hooks, and returns once the host
@@ -118,7 +136,7 @@ func (h *HostApplication) InteropStart(hooks InteropHooks, timeout time.Duration
 	if h.reorderTimeout > 0 {
 		next = newInOrderProcessor(h.reorderTimeout, mgr, gap)
 	}
-	h.messageProcessor = &interopProcessor{next: next, mgr: mgr, hook: hooks.OnMessage}
+	h.messageProcessor = &interopProcessor{next: next, mgr: mgr, hook: hooks.OnMessage, logger: h.logger}
 	interopManagers.Store(h, mgr)
 
 	deadline := time.Now().Add(timeout)

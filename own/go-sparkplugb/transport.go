@@ -13,14 +13,15 @@ import (
 // what the contract reports and the library's API does not tell. It sees each
 // publish after it succeeded (the edge's "published" events, whoever
 // published: the adapter or the library on its own, as for a rebirth on an
-// NCMD or the NDEATH before a disconnect) and each message before the library
-// does (the edge's commands that the library answers itself, the primary
-// host's STATE). It tells a connection that ends on its own from a
-// disconnect of the library.
+// NCMD or the NDEATH before a disconnect; the host's rebirth requests, with
+// the context of the publish) and each message before the library does (the
+// edge's commands that the library answers itself, the primary host's
+// STATE). It tells a connection that ends on its own from a disconnect of the
+// library.
 type tap struct {
 	inner mqtt.Transport
 
-	onPublish func(topic string, payload []byte)
+	onPublish func(ctx context.Context, topic string, payload []byte)
 	onMessage func(topic string, payload []byte)
 	onLost    func(err error)
 
@@ -52,7 +53,7 @@ func (t *tap) Publish(ctx context.Context, topic string, qos byte, retained bool
 		return err
 	}
 	if t.onPublish != nil {
-		t.onPublish(topic, payload)
+		t.onPublish(ctx, topic, payload)
 	}
 	return nil
 }

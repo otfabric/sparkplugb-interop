@@ -62,7 +62,8 @@ func runEdge(f flags) int {
 	}
 	paho := mqtt.NewPahoTransport()
 	paho.ConnectTimeout = time.Duration(f.int("connect-timeout-ms", 10000)) * time.Millisecond
-	tr := &tap{inner: paho, onPublish: e.published, onMessage: e.received, onLost: func(err error) {
+	published := func(_ context.Context, t string, data []byte) { e.published(t, data) }
+	tr := &tap{inner: paho, onPublish: published, onMessage: e.received, onLost: func(err error) {
 		select {
 		case e.lost <- err:
 		default:
@@ -75,7 +76,7 @@ func runEdge(f flags) int {
 		ClientID:      f.str("client-id", fmt.Sprintf("%s-edge-%s-%s", adapter, e.group, e.edgeNode)),
 		PrimaryHostID: e.primaryHost,
 		Logger:        stderrLogger{},
-		// Called with the node's lock held: the births go out from run.
+		// Called with none of the node's locks held; the births go out from run.
 		OnState: func(_, s edge.State) {
 			if s == edge.Online {
 				select {
